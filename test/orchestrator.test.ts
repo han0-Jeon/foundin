@@ -14,6 +14,7 @@ const fixtureText = htmlToText(readFileSync(join(__dirname, "../fixtures/sample-
 const collectStub = async (): Promise<CollectResult> => ({
   documents: [{ url: NOTICE_URL, kind: "html", title: "2026년 서울 초기창업 성장지원 사업 참여기업 모집 공고", text: fixtureText }],
   skipped: [{ url: "https://example.go.kr/files/form_2026_241.hwp", kind: "hwp", fileName: "사업계획서 양식.hwp" }],
+  contact: { phones: ["02-123-4567"], emails: [], lines: ["문의: 창업지원팀 02-123-4567"] },
 });
 
 const classifyOk = JSON.stringify({

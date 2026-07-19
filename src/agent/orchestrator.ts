@@ -88,10 +88,12 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
   step("collect", "원문·첨부 수집");
   let documents: SourceDocument[];
   let skipped;
+  let contact = null;
   try {
     const result = await collect(url, deps.fetchOptions ?? {});
-    documents = result.documents;
+    documents = result.documents; // 연락처 마스킹된 텍스트 (Solar 전송용)
     skipped = result.skipped;
+    contact = result.contact; // 마스킹 전 연락처 (표시 전용, Solar 미전송)
   } catch (error) {
     return {
       ok: false,
@@ -215,6 +217,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     verification: outcome.report,
     documents_meta: documents.map((document) => ({ url: document.url, kind: document.kind, chars: document.text.length })),
     skipped_attachments: skipped ?? [],
+    contact, // Solar 미전송 — 우리 코드가 원문에서 직접 추출
     confidence: extraction.confidence,
   };
   return { ok: true, brief };

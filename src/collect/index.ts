@@ -1,5 +1,6 @@
-import type { SkippedAttachment, SourceDocument } from "../types.js";
+import type { ContactInfo, SkippedAttachment, SourceDocument } from "../types.js";
 import { decodeText, guardedFetch, type GuardedFetchOptions } from "./fetch.js";
+import { extractContact, hasContact, maskContact } from "./contact.js";
 import { extractTitle, findAttachmentLinks, htmlToText } from "./html.js";
 import { hwpToText, hwpxToText, looksLikeCfb, looksLikeZip } from "./hwp.js";
 import { pdfToText } from "./pdf.js";
@@ -9,8 +10,18 @@ const MIN_PAGE_TEXT = 80;
 const MIN_ATTACHMENT_TEXT = 40;
 
 export interface CollectResult {
+  /** Solar 로 보낼 문서 — 연락처가 마스킹된 상태 */
   documents: SourceDocument[];
   skipped: SkippedAttachment[];
+  /** 원문에서 뽑은 담당자 연락처 (마스킹 전, 표시 전용) */
+  contact: ContactInfo | null;
+}
+
+/** 원문에서 연락처를 뽑고(표시용), 문서 텍스트는 마스킹(Solar 전송용)해서 돌려준다. */
+function redactDocuments(documents: SourceDocument[]): { masked: SourceDocument[]; contact: ContactInfo | null } {
+  const contact = extractContact(documents.map((document) => document.text).join("\n"));
+  const masked = documents.map((document) => ({ ...document, text: maskContact(document.text) }));
+  return { masked, contact: hasContact(contact) ? contact : null };
 }
 
 function looksLikePdf(contentType: string | null, url: string, bytes: Buffer): boolean {
@@ -61,7 +72,8 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
       throw new Error(`${extracted.kind.toUpperCase()} 에서 텍스트를 추출하지 못했습니다 (스캔본 가능성)`);
     }
     documents.push({ url: main.finalUrl, kind: extracted.kind, title: main.fileName, text: extracted.text });
-    return { documents, skipped };
+    const single = redactDocuments(documents);
+    return { documents: single.masked, skipped, contact: single.contact };
   }
 
   const html = decodeText(main.bytes, main.contentType);
@@ -99,5 +111,6 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
     }
   }
 
-  return { documents, skipped };
+  const { masked, contact } = redactDocuments(documents);
+  return { documents: masked, skipped, contact };
 }
