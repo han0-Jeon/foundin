@@ -47,7 +47,10 @@ npm run typecheck
 ```
 공고 URL
   → ① 수집: 원문 HTML + PDF·HWP·HWPX 첨부 (SSRF 가드, EUC-KR 대응. 암호화·DRM 문서만 "미분석" 표기)
-  → ② 판정: 지원사업 공고인가? (아니면 사유와 함께 반려)
+  → ①.5 프리체크: 출처 도메인 티어(공공 *.go.kr·화이트리스트 / 일반 / 반려) + 위험신호(선입금·계좌
+       송금·주민번호·텔레그램 유도) + 공고 패턴 — 결정적 코드. 공공+공고면 즉시 통과(판정 생략),
+       IP·punycode·유사도메인·신생 도메인·위험신호면 즉시 반려
+  → ② 판정: (프리체크가 애매할 때만) 지원사업 공고인가? (아니면 사유와 함께 반려)
   → ③ 추출: 자격·제외·서류·일정·위험 + 모든 항목에 원문 인용 (Solar Open 2)
   → ④ 검증: 결정적 코드가 인용·날짜·금액을 원문과 대조 (LLM 아님)
        실패 인용은 피드백으로 되돌려 1회 재추출, 그래도 실패면 항목 보류
@@ -73,15 +76,16 @@ npm run typecheck
 
 ```
 src/
-├── agent/        오케스트레이터 + 프롬프트 (판정 → 추출 → 조언)
+├── agent/        오케스트레이터 + 프롬프트 (프리체크 → 판정 → 추출 → 조언)
 ├── verify/       결정적 검증기: 인용 대조 · 날짜/금액 재파싱 · 충돌 · 발행 게이트
-├── collect/      SSRF 가드 fetch · HTML/PDF/HWP/HWPX 텍스트 추출 · EUC-KR 디코드
+├── collect/      SSRF 가드 fetch · HTML/PDF/HWP/HWPX 텍스트 추출 · EUC-KR 디코드 · precheck(도메인 티어·위험신호)
 ├── llm/          러너 추상화: solar (베타) | claude-code | codex (구독 CLI 폴백)
 ├── match/        로컬 프로필 매칭 (LLM 비전송)
 ├── brief/        브리프 렌더러 (Markdown/터미널)
 ├── cli.ts        analyze · today
-└── worker.ts     foundin.kr 편집국 큐 폴링 워커 (프로덕션 모드)
+└── worker.ts     foundin.kr 편집국 큐 폴링 워커 (STAGE A 중간 보고 · Supabase Realtime 즉시 깨우기 + 20초 폴링 폴백)
 eval/calibrate.ts 모델 캘리브레이션 (JSON 준수율·장문·지연·tool calling 프로브)
+eval/batch.ts     배치 평가 하니스 (발행/반려/보류율·인용 통과율·소요시간 집계, 지표 전용·무발행)
 fixtures/ test/   오프라인 픽스처와 테스트
 ```
 
