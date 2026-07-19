@@ -12,16 +12,22 @@ const MIN_ATTACHMENT_TEXT = 40;
 export interface CollectResult {
   /** Solar 로 보낼 문서 — 연락처가 마스킹된 상태 */
   documents: SourceDocument[];
+  /** 마스킹 전 원문 — 로컬 프리체크(위험신호 스캔) 전용. LLM 으로 절대 보내지 않는다. */
+  rawDocuments: SourceDocument[];
   skipped: SkippedAttachment[];
   /** 원문에서 뽑은 담당자 연락처 (마스킹 전, 표시 전용) */
   contact: ContactInfo | null;
 }
 
 /** 원문에서 연락처를 뽑고(표시용), 문서 텍스트는 마스킹(Solar 전송용)해서 돌려준다. */
-function redactDocuments(documents: SourceDocument[]): { masked: SourceDocument[]; contact: ContactInfo | null } {
+function redactDocuments(documents: SourceDocument[]): {
+  masked: SourceDocument[];
+  raw: SourceDocument[];
+  contact: ContactInfo | null;
+} {
   const contact = extractContact(documents.map((document) => document.text).join("\n"));
   const masked = documents.map((document) => ({ ...document, text: maskContact(document.text) }));
-  return { masked, contact: hasContact(contact) ? contact : null };
+  return { masked, raw: documents, contact: hasContact(contact) ? contact : null };
 }
 
 function looksLikePdf(contentType: string | null, url: string, bytes: Buffer): boolean {
@@ -73,7 +79,7 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
     }
     documents.push({ url: main.finalUrl, kind: extracted.kind, title: main.fileName, text: extracted.text });
     const single = redactDocuments(documents);
-    return { documents: single.masked, skipped, contact: single.contact };
+    return { documents: single.masked, rawDocuments: single.raw, skipped, contact: single.contact };
   }
 
   const html = decodeText(main.bytes, main.contentType);
@@ -111,6 +117,6 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
     }
   }
 
-  const { masked, contact } = redactDocuments(documents);
-  return { documents: masked, skipped, contact };
+  const { masked, raw, contact } = redactDocuments(documents);
+  return { documents: masked, rawDocuments: raw, skipped, contact };
 }
