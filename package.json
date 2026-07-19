@@ -12,10 +12,12 @@
     "today": "tsx src/cli.ts today",
     "worker": "tsx src/worker.ts",
     "calibrate": "tsx eval/calibrate.ts",
+    "eval": "tsx eval/batch.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.7",
     "cfb": "^1.2.2",
     "fflate": "^0.8.3",
     "pdf-parse": "^1.1.1",
