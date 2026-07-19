@@ -158,6 +158,12 @@ export interface VerifiedItem<T> {
   verified: boolean;
   item: T;
 }
+
+/** 기관 문의 질문 — 보류·미검증·미확인 지점에서 결정적으로 생성 (Solar 미호출) */
+export interface InquiryQuestion {
+  topic: string;
+  question: string;
+}
 export interface Brief {
   source_url: string;
   analyzed_at: string; // ISO
@@ -177,6 +183,8 @@ export interface Brief {
   skipped_attachments: SkippedAttachment[];
   /** 담당자 연락처 (Solar 미전송, 표시 전용). 없으면 null. */
   contact: ContactInfo | null;
+  /** 기관에 확인할 질문 — 보류 항목·미검증 값·읽지 못한 첨부에서 기계 생성 */
+  inquiry_questions: InquiryQuestion[];
   confidence: number;
 }
 

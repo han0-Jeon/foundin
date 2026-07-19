@@ -44,6 +44,7 @@ function makeBrief(overrides: Partial<Brief["eligibility"]>, applyEnd: string | 
     documents_meta: [],
     skipped_attachments: [],
     contact: null,
+    inquiry_questions: [],
     confidence: 1,
   };
 }

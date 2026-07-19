@@ -13,6 +13,7 @@ import {
   type Extraction,
   type SourceDocument,
 } from "../types.js";
+import { buildInquiryQuestions } from "../brief/inquiry.js";
 import { verifyExtraction } from "../verify/index.js";
 import { ADVISE_SYSTEM, CLASSIFY_SYSTEM, EXTRACT_SYSTEM, adviseUser, classifyUser, extractUser } from "./prompts.js";
 
@@ -237,7 +238,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
   const stamp = <T>(name: string, items: T[]) =>
     items.map((item, i) => ({ verified: outcome.verdicts.get(`${name}[${i}]`) ?? false, item }));
 
-  const brief: Brief = {
+  const assembled: Omit<Brief, "inquiry_questions"> = {
     source_url: url,
     analyzed_at: new Date().toISOString(),
     model: deps.runner.name,
@@ -259,5 +260,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     contact, // Solar 미전송 — 우리 코드가 원문에서 직접 추출
     confidence: extraction.confidence,
   };
+  // 문의 질문 — 보류·미검증·미확인 지점에서 결정적 생성 (Solar 미호출)
+  const brief: Brief = { ...assembled, inquiry_questions: buildInquiryQuestions(assembled) };
   return { ok: true, brief };
 }

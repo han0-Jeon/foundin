@@ -88,6 +88,13 @@ export function renderMarkdown(brief: Brief, match?: { profile: Profile; result:
     for (const { item, verified } of brief.risk_points) lines.push(`- ${item.text}${mark(verified)}`);
     lines.push("");
   }
+  if (brief.inquiry_questions.length > 0) {
+    lines.push(`## 기관에 확인할 질문`);
+    brief.inquiry_questions.forEach((entry, index) => {
+      lines.push(`${index + 1}. [${entry.topic}] ${entry.question}`);
+    });
+    lines.push("");
+  }
   if (brief.contact && (brief.contact.phones.length > 0 || brief.contact.emails.length > 0)) {
     lines.push(`## 문의처`);
     if (brief.contact.phones.length > 0) lines.push(`- 전화: ${brief.contact.phones.join(", ")}`);
