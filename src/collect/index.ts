@@ -1,8 +1,9 @@
 import type { ContactInfo, SkippedAttachment, SourceDocument } from "../types.js";
 import { decodeText, guardedFetch, type GuardedFetchOptions } from "./fetch.js";
 import { extractContact, hasContact, maskContact } from "./contact.js";
-import { extractTitle, findAttachmentLinks, htmlToText } from "./html.js";
+import { extractTitle, findAttachmentLinks, findInlineImages, htmlToText } from "./html.js";
 import { docxToText, hwpToText, hwpxToText, looksLikeCfb, looksLikeZip } from "./hwp.js";
+import { imageToText, ocrEnabled, type OcrDeps } from "./ocr.js";
 import { pdfToText } from "./pdf.js";
 
 const ATTACHMENT_LIMIT = 3;
@@ -10,6 +11,23 @@ const MIN_PAGE_TEXT = 80;
 const MIN_ATTACHMENT_TEXT = 40;
 // K-Startup 셸 페이지(빈 상세, 브레드크럼만 ~92자) 감지 임계 — 실제 상세는 수천 자
 const KSTARTUP_SHELL_TEXT = 300;
+// 본문+첨부 합산 텍스트가 이보다 얇으면 "포스터가 본문"일 가능성 — 인라인 이미지 OCR 시도 (옵트인)
+const INLINE_OCR_TEXT = 400;
+const INLINE_OCR_LIMIT = 2;
+
+/** 수집 옵션 — fetch 가드 + (옵트인) 이미지 OCR */
+export interface CollectOptions extends GuardedFetchOptions {
+  /** 이미지 포스터 OCR. 미지정 시 env(FOUNDIN_OCR=docparse) 기준 */
+  ocr?: OcrDeps & { enabled?: boolean };
+}
+
+function looksLikeImage(contentType: string | null, url: string, bytes: Buffer): boolean {
+  if (contentType?.startsWith("image/")) return true;
+  if (/\.(png|jpe?g)(?:$|[?#])/i.test(url)) return true;
+  const head = bytes.subarray(0, 4);
+  if (head.length >= 4 && head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return true; // PNG
+  return head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff; // JPEG
+}
 
 export interface CollectResult {
   /** Solar 로 보낼 문서 — 연락처가 마스킹된 상태 */
@@ -64,11 +82,21 @@ interface ExtractedFile {
 }
 
 /** 바이트 시그니처·파일명으로 포맷을 판별해 텍스트 추출. 실패는 사유가 담긴 Error 로 던진다. */
-async function extractFile(bytes: Buffer, url: string, contentType: string | null, fileName: string | null): Promise<ExtractedFile> {
+async function extractFile(
+  bytes: Buffer,
+  url: string,
+  contentType: string | null,
+  fileName: string | null,
+  ocr?: CollectOptions["ocr"],
+): Promise<ExtractedFile> {
   const name = (fileName ?? url).toLowerCase();
 
   if (looksLikePdf(contentType, url, bytes)) {
     return { kind: "pdf", text: await pdfToText(bytes) };
+  }
+  if (looksLikeImage(contentType, url, bytes)) {
+    if (!(ocr?.enabled ?? ocrEnabled())) throw new Error("이미지 문서 — OCR 미설정 (FOUNDIN_OCR=docparse)");
+    return { kind: "image", text: await imageToText(bytes, fileName, ocr) };
   }
   if (looksLikeCfb(bytes)) {
     return { kind: "hwp", text: hwpToText(bytes) };
@@ -101,15 +129,24 @@ async function extractFile(bytes: Buffer, url: string, contentType: string | nul
  * 공고 URL → 원문 + 첨부 텍스트 (HTML·PDF·HWP·HWPX·TXT).
  * 암호화 HWP 등 읽지 못한 첨부는 skipped 로 보고하고 브리프에 "원문 확인 필요"로 노출한다.
  */
-export async function collectDocuments(url: string, options: GuardedFetchOptions = {}): Promise<CollectResult> {
+export async function collectDocuments(url: string, options: CollectOptions = {}): Promise<CollectResult> {
   const documents: SourceDocument[] = [];
   const skipped: SkippedAttachment[] = [];
+  const ocrOn = options.ocr?.enabled ?? ocrEnabled();
+  // OCR 호출도 수집기와 같은 fetch 구현을 쓴다 (테스트 주입 일관성)
+  const ocrDeps: CollectOptions["ocr"] = ocrOn
+    ? { ...options.ocr, enabled: true, fetchImpl: options.ocr?.fetchImpl ?? options.fetchImpl }
+    : { ...options.ocr, enabled: false };
 
   let main = await guardedFetch(url, options);
 
-  // 메인 URL 이 문서 파일 직링크인 경우
-  if (looksLikePdf(main.contentType, main.finalUrl, main.bytes) || looksLikeCfb(main.bytes)) {
-    const extracted = await extractFile(main.bytes, main.finalUrl, main.contentType, main.fileName);
+  // 메인 URL 이 문서 파일(또는 OCR 켠 경우 이미지) 직링크인 경우
+  if (
+    looksLikePdf(main.contentType, main.finalUrl, main.bytes) ||
+    looksLikeCfb(main.bytes) ||
+    (ocrOn && looksLikeImage(main.contentType, main.finalUrl, main.bytes))
+  ) {
+    const extracted = await extractFile(main.bytes, main.finalUrl, main.contentType, main.fileName, ocrDeps);
     if (extracted.text.length < MIN_PAGE_TEXT) {
       throw new Error(`${extracted.kind.toUpperCase()} 에서 텍스트를 추출하지 못했습니다 (스캔본 가능성)`);
     }
@@ -140,10 +177,12 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
     }
   }
 
-  if (pageText.length < MIN_PAGE_TEXT) {
+  if (pageText.length >= MIN_PAGE_TEXT) {
+    documents.push({ url: main.finalUrl, kind: "html", title: extractTitle(html), text: pageText });
+  } else if (!ocrOn) {
     throw new Error("페이지에서 본문 텍스트를 찾지 못했습니다 (JS 렌더링 페이지 가능성)");
   }
-  documents.push({ url: main.finalUrl, kind: "html", title: extractTitle(html), text: pageText });
+  // (OCR 켠 경우엔 본문이 빈약해도 계속 — 아래에서 첨부·인라인 포스터로 본문을 구한다)
 
   let fetched = 0;
   for (const link of findAttachmentLinks(html, main.finalUrl)) {
@@ -157,7 +196,7 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
     }
     const fileName = attachment.fileName ?? link.label ?? null;
     try {
-      const extracted = await extractFile(attachment.bytes, attachment.finalUrl, attachment.contentType, fileName);
+      const extracted = await extractFile(attachment.bytes, attachment.finalUrl, attachment.contentType, fileName, ocrDeps);
       if (extracted.text.length < MIN_ATTACHMENT_TEXT) {
         skipped.push({ url: link.url, kind: `${extracted.kind} 텍스트 없음`, fileName });
         continue;
@@ -171,6 +210,36 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
         fileName,
       });
     }
+  }
+
+  // 인라인 포스터 OCR (옵트인): 본문+첨부 합산 텍스트가 얇으면 "포스터가 본문"인 공고 —
+  // 본문 <img> 후보를 내려받아 OCR 로 본문을 구한다 (지자체·대학 카드뉴스형 공고 대응).
+  if (ocrOn) {
+    const totalChars = documents.reduce((sum, document) => sum + document.text.length, 0);
+    if (totalChars < INLINE_OCR_TEXT) {
+      let done = 0;
+      for (const imageUrl of findInlineImages(html, main.finalUrl)) {
+        if (done >= INLINE_OCR_LIMIT) break;
+        try {
+          const image = await guardedFetch(imageUrl, options);
+          if (!looksLikeImage(image.contentType, image.finalUrl, image.bytes)) continue;
+          const text = await imageToText(image.bytes, image.fileName, ocrDeps);
+          if (text.length < MIN_ATTACHMENT_TEXT) continue;
+          documents.push({ url: image.finalUrl, kind: "image", title: image.fileName ?? "포스터 이미지", text });
+          done++;
+        } catch (error) {
+          skipped.push({
+            url: imageUrl,
+            kind: `OCR 실패: ${error instanceof Error ? error.message : "오류"}`.slice(0, 60),
+            fileName: null,
+          });
+        }
+      }
+    }
+  }
+
+  if (documents.length === 0) {
+    throw new Error("페이지에서 본문 텍스트를 찾지 못했습니다 (JS 렌더링·이미지 전용 페이지 가능성)");
   }
 
   const { masked, raw, contact } = redactDocuments(documents);

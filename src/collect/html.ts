@@ -89,3 +89,31 @@ export function findAttachmentLinks(html: string, baseUrl: string): AttachmentLi
   }
   return links;
 }
+
+// ── 인라인 포스터 이미지 후보 (OCR 용) ────────────────────────
+// 본문 텍스트가 빈약한 공고는 카드뉴스형 포스터 <img> 하나가 본문인 경우가 많다.
+// 아이콘·로고·버튼류는 파일명 휴리스틱으로 걸러낸다.
+const IMAGE_SKIP_NAME = /(logo|icon|ico_|btn|button|banner|bullet|blank|spacer|arrow|dot_|bg_|_bg)/i;
+
+export function findInlineImages(html: string, baseUrl: string, limit = 3): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const imgPattern = /<img\b[^>]*src\s*=\s*("([^"]*)"|'([^']*)')[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = imgPattern.exec(html)) !== null && urls.length < limit) {
+    const rawSrc = (match[2] ?? match[3] ?? "").trim();
+    if (!rawSrc || rawSrc.startsWith("data:")) continue;
+    let url: string;
+    try {
+      url = new URL(decodeEntities(rawSrc), baseUrl).toString();
+    } catch {
+      continue;
+    }
+    if (seen.has(url)) continue;
+    seen.add(url);
+    if (!/\.(png|jpe?g)(?:$|[?#])/i.test(url) && !/(?:imgFile|fileDown|getImage|thumbnail)/i.test(url)) continue;
+    if (IMAGE_SKIP_NAME.test(url)) continue;
+    urls.push(url);
+  }
+  return urls;
+}
