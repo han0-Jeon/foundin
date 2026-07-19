@@ -2,8 +2,14 @@ import type { CompleteRequest, LlmRunner } from "./runner.js";
 
 // Upstage Solar API — OpenAI 호환 chat completions.
 // 베타 한도: 400 RPM / 150K TPM. 429·5xx 는 지수 백오프로 재시도.
+//
+// ⚠ solar-open2 는 추론(reasoning) 모델이다 (2026-07-19 실측): completion 토큰을 생각에 먼저
+// 소모한 뒤 content 를 쓴다. max_tokens 가 작으면 생각만 하다 content 가 빈 채로 끝나므로,
+// 호출자가 요청한 본문 예산에 추론 버퍼를 얹고, 비면 버퍼를 늘려 재시도한다.
 
 const MAX_ATTEMPTS = 3;
+const REASONING_BUFFER_BASE = 4096;
+const REASONING_BUFFER_MAX = 16384;
 
 interface ChatMessage {
   role: "system" | "user";
@@ -32,12 +38,13 @@ export class SolarRunner implements LlmRunner {
     messages.push({ role: "user", content: req.user });
 
     let lastError = "";
+    let reasoningBuffer = REASONING_BUFFER_BASE;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const body: Record<string, unknown> = {
         model: this.name,
         messages,
         temperature: req.temperature ?? 0.2,
-        max_tokens: req.maxTokens ?? 4096,
+        max_tokens: (req.maxTokens ?? 4096) + reasoningBuffer,
       };
       if (req.json && this.supportsResponseFormat) {
         body.response_format = { type: "json_object" };
@@ -62,12 +69,14 @@ export class SolarRunner implements LlmRunner {
 
       if (response.ok) {
         const data = (await response.json()) as {
-          choices?: { message?: { content?: string } }[];
+          choices?: { message?: { content?: string }; finish_reason?: string }[];
         };
-        const content = data.choices?.[0]?.message?.content;
+        const choice = data.choices?.[0];
+        const content = choice?.message?.content;
         if (typeof content === "string" && content.trim()) return content;
-        lastError = "empty completion content";
-        await backoff(attempt);
+        // 추론이 예산을 다 먹은 경우 — 버퍼를 키워 즉시 재시도 (백오프 불필요)
+        lastError = `empty content (finish_reason=${choice?.finish_reason ?? "?"})`;
+        reasoningBuffer = Math.min(reasoningBuffer * 2, REASONING_BUFFER_MAX);
         continue;
       }
 
