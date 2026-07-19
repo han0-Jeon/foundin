@@ -128,10 +128,10 @@ export interface SkippedAttachment {
 }
 
 // 담당자 연락처 — 우리 코드가 원문에서 직접 추출(Solar 미전송), 브리프에 담아 사용자에게만 표시.
+// 전화·이메일만 담는다 (문맥 줄은 공공 게시판 HTML 이 제각각이라 노이즈가 많아 제외 — 실측 확인).
 export interface ContactInfo {
   phones: string[];
   emails: string[];
-  lines: string[];
 }
 
 // ── 검증 리포트 (결정적 계산, LLM 산출물 아님) ────────────────

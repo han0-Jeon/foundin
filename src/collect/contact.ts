@@ -16,7 +16,6 @@ const EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const TITLES = "주무관|사무관|서기관|연구원|연구사|주임연구원|매니저|팀장|과장|부장|차장|대리|담당자|담당|선임|책임|주임";
 const NAME_AFTER_TITLE = new RegExp(`([가-힣]{2,4})\\s*(?:${TITLES})(?![가-힣])`, "g");
 const NAME_BEFORE = new RegExp(`((?:담당자|담당|문의자|작성자)\\s*[:：]?\\s*)([가-힣]{2,4})(?![가-힣])`, "g");
-const CONTACT_CONTEXT = /(?:문의|담당|연락처|콜센터|안내\s*전화)/;
 
 function dedupe(values: string[]): string[] {
   return [...new Set(values.map((v) => v.trim()).filter(Boolean))];
@@ -24,22 +23,14 @@ function dedupe(values: string[]): string[] {
 
 /** 원문(마스킹 전)에서 연락처를 뽑는다 — 표시 전용, Solar 로 가지 않는다. */
 export function extractContact(text: string): ContactInfo {
-  const phones = dedupe(text.match(PHONE) ?? []);
-  const emails = dedupe(text.match(EMAIL) ?? []);
-  const lines = dedupe(
-    text
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0 && line.length <= 120 && CONTACT_CONTEXT.test(line) && (PHONE.test(line) || EMAIL.test(line) || new RegExp(TITLES).test(line))),
-  ).slice(0, 3);
-  // PHONE/EMAIL 은 global 이라 test 후 lastIndex 가 남는다 — 리셋
-  PHONE.lastIndex = 0;
-  EMAIL.lastIndex = 0;
-  return { phones, emails, lines };
+  return {
+    phones: dedupe(text.match(PHONE) ?? []),
+    emails: dedupe(text.match(EMAIL) ?? []),
+  };
 }
 
 export function hasContact(contact: ContactInfo): boolean {
-  return contact.phones.length > 0 || contact.emails.length > 0 || contact.lines.length > 0;
+  return contact.phones.length > 0 || contact.emails.length > 0;
 }
 
 /** Solar 로 보내는 텍스트에서 연락처를 가린다. 자격·마감·서류 추출에는 영향 없다. */

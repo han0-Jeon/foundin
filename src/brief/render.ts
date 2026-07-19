@@ -88,14 +88,10 @@ export function renderMarkdown(brief: Brief, match?: { profile: Profile; result:
     for (const { item, verified } of brief.risk_points) lines.push(`- ${item.text}${mark(verified)}`);
     lines.push("");
   }
-  if (brief.contact && (brief.contact.lines.length > 0 || brief.contact.phones.length > 0 || brief.contact.emails.length > 0)) {
+  if (brief.contact && (brief.contact.phones.length > 0 || brief.contact.emails.length > 0)) {
     lines.push(`## 문의처`);
-    if (brief.contact.lines.length > 0) {
-      for (const line of brief.contact.lines) lines.push(`- ${line}`);
-    } else {
-      if (brief.contact.phones.length > 0) lines.push(`- 전화: ${brief.contact.phones.join(", ")}`);
-      if (brief.contact.emails.length > 0) lines.push(`- 이메일: ${brief.contact.emails.join(", ")}`);
-    }
+    if (brief.contact.phones.length > 0) lines.push(`- 전화: ${brief.contact.phones.join(", ")}`);
+    if (brief.contact.emails.length > 0) lines.push(`- 이메일: ${brief.contact.emails.join(", ")}`);
     lines.push("");
   }
 
