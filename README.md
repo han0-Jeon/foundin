@@ -46,7 +46,7 @@ npm run typecheck
 
 ```
 공고 URL
-  → ① 수집: 원문 HTML + PDF 첨부 (SSRF 가드, EUC-KR 대응. HWP 는 정직하게 "미분석" 표기)
+  → ① 수집: 원문 HTML + PDF·HWP·HWPX 첨부 (SSRF 가드, EUC-KR 대응. 암호화·DRM 문서만 "미분석" 표기)
   → ② 판정: 지원사업 공고인가? (아니면 사유와 함께 반려)
   → ③ 추출: 자격·제외·서류·일정·위험 + 모든 항목에 원문 인용 (Solar Open 2)
   → ④ 검증: 결정적 코드가 인용·날짜·금액을 원문과 대조 (LLM 아님)
@@ -73,7 +73,7 @@ npm run typecheck
 src/
 ├── agent/        오케스트레이터 + 프롬프트 (판정 → 추출 → 조언)
 ├── verify/       결정적 검증기: 인용 대조 · 날짜/금액 재파싱 · 충돌 · 발행 게이트
-├── collect/      SSRF 가드 fetch · HTML/PDF 텍스트 추출 · EUC-KR 디코드
+├── collect/      SSRF 가드 fetch · HTML/PDF/HWP/HWPX 텍스트 추출 · EUC-KR 디코드
 ├── llm/          러너 추상화: solar (베타) | claude-code | codex (구독 CLI 폴백)
 ├── match/        로컬 프로필 매칭 (LLM 비전송)
 ├── brief/        브리프 렌더러 (Markdown/터미널)
@@ -107,7 +107,6 @@ API 키는 `.env` 로만 관리한다. 커밋 금지.
 ## 로드맵
 
 - 마감 일정 관리 · 지원사업 간 자격 충돌 확인 · 사업계획서 작성 체크리스트 자동화
-- HWP/HWPX 첨부 텍스트 추출 (현재는 미분석 항목으로 정직하게 표기)
 - 브리프 정확도 평가 코퍼스 공개 (골든셋 대비 필드 정확도·인용 통과율)
 
 ## 참고
