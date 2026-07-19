@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { decodeEntities, extractTitle, findAttachmentLinks, htmlToText } from "../src/collect/html.js";
 import { collectDocuments, kstartupSiblingUrl } from "../src/collect/index.js";
+import { normalizeRawUrl } from "../src/collect/fetch.js";
 
 const fixture = readFileSync(join(__dirname, "../fixtures/sample-notice.html"), "utf8");
 
@@ -75,5 +76,19 @@ describe("K-Startup 셸 폴백", () => {
 
     await collectDocuments(ongoing, { fetchImpl, skipGuard: true });
     expect(calls.some((c) => c.includes("bizpbanc-deadline"))).toBe(false);
+  });
+});
+
+describe("원문 URL 오염 보정 (normalizeRawUrl)", () => {
+  it("HTML 이스케이프 잔재 &amp; 복원", () => {
+    expect(normalizeRawUrl("https://x.go.kr/a?b=1&amp;c=2&amp;d=3")).toBe("https://x.go.kr/a?b=1&c=2&d=3");
+  });
+  it("스킴 없는 주소에 https:// 보정", () => {
+    expect(normalizeRawUrl("www.btp.or.kr")).toBe("https://www.btp.or.kr");
+    expect(normalizeRawUrl("btp.or.kr/notice?id=1")).toBe("https://btp.or.kr/notice?id=1");
+  });
+  it("정상 URL·비 URL 문자열은 그대로", () => {
+    expect(normalizeRawUrl("https://ok.go.kr/x")).toBe("https://ok.go.kr/x");
+    expect(normalizeRawUrl("not a url")).toBe("not a url");
   });
 });

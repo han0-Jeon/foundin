@@ -80,12 +80,24 @@ function fileNameFromDisposition(value: string | null): string | null {
   return plain;
 }
 
+/**
+ * 공공 API 가 주는 원문 링크의 흔한 오염 2종을 보정한다 (100건 실측: 수집 실패 8건 중 2건).
+ * ① HTML 이스케이프가 남은 쿼리 (&amp;) ② 스킴 없는 주소 (www.example.or.kr)
+ */
+export function normalizeRawUrl(rawUrl: string): string {
+  let url = rawUrl.trim().replace(/&amp;/g, "&");
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url) && /^[a-z0-9-]+(\.[a-z0-9-]+)+([/?#]|$)/i.test(url)) {
+    url = `https://${url}`;
+  }
+  return url;
+}
+
 export async function guardedFetch(rawUrl: string, options: GuardedFetchOptions = {}): Promise<FetchedResource> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 
-  let current = new URL(rawUrl);
+  let current = new URL(normalizeRawUrl(rawUrl));
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (!options.skipGuard) await assertPublicHost(current);
 
