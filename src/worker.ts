@@ -100,11 +100,14 @@ async function reportStage(laneId: number, jobId: string, info: StageAInfo): Pro
 }
 
 // (선택) Supabase Realtime 구독으로 즉시 깨우기. env 없음·구독 실패 시 20초 폴링으로 폴백.
+// 주의: postgres_changes 는 구독자의 RLS 를 따른다 — anon 키는 published 행만 보이므로
+// queued 잡 INSERT 이벤트를 받지 못한다. 전체 깨우기에는 service role 키가 필요하다.
+// (테이블이 supabase_realtime publication 에 등록돼 있어야 한다.)
 async function setupRealtime(): Promise<void> {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY;
   if (!url || !key) {
-    log("rt", "SUPABASE_URL/ANON_KEY 없음 — 20초 폴링만 사용");
+    log("rt", "SUPABASE_URL/키 없음 — 20초 폴링만 사용");
     return;
   }
   try {
