@@ -160,6 +160,58 @@ describe("검증 게이트 (fail-closed)", () => {
     expect(report.held).toContain("overview.amount_max_krw");
   });
 
+  it("범위 인용 여럿이 같은 마감을 가리키면 충돌 아님", () => {
+    const rangeText = `□ (공고기간) ‘26. 7. 6.(월) ~ ’26. 8. 4.(화), 15:00까지
+□ (접수기간) ‘26. 7. 20.(월) ~ ’26. 8. 4.(화), 15:00까지
+사업화 자금 기업당 최대 5,000만원
+공고일 기준 사업자등록을 완료한 창업 7년 이내 기업`;
+    const extraction = baseExtraction({
+      overview: { ...baseExtraction({}).overview, apply_end: "2026-08-04" },
+      overview_evidence: [
+        { field: "apply_end", quote: "□ (공고기간) ‘26. 7. 6.(월) ~ ’26. 8. 4.(화), 15:00까지", source_url: "https://example.go.kr/notice" },
+        { field: "apply_end", quote: "□ (접수기간) ‘26. 7. 20.(월) ~ ’26. 8. 4.(화), 15:00까지", source_url: "https://example.go.kr/notice" },
+        { field: "amount_max_krw", quote: "사업화 자금 기업당 최대 5,000만원", source_url: "https://example.go.kr/notice" },
+      ],
+      requirements: [
+        {
+          text: "창업 7년 이내 기업",
+          evidence: { quote: "공고일 기준 사업자등록을 완료한 창업 7년 이내 기업", source_url: "https://example.go.kr/notice" },
+          branch_advice: null,
+        },
+      ],
+    });
+    const { report, verdicts } = verifyExtraction(extraction, [doc(rangeText)]);
+    expect(verdicts.get("overview.apply_end")).toBe(true);
+    expect(report.conflicts).toHaveLength(0);
+    expect(report.publishable).toBe(true);
+  });
+
+  it("인용들이 다른 마감을 가리키면 충돌로 미발행", () => {
+    const conflictText = `□ (공고기간) ‘26. 7. 6.(월) ~ ’26. 8. 4.(화), 15:00까지
+연장 공고: 접수 마감 ’26. 8. 28.(금) 15:00까지
+사업화 자금 기업당 최대 5,000만원
+공고일 기준 사업자등록을 완료한 창업 7년 이내 기업`;
+    const extraction = baseExtraction({
+      overview: { ...baseExtraction({}).overview, apply_end: "2026-08-04" },
+      overview_evidence: [
+        { field: "apply_end", quote: "□ (공고기간) ‘26. 7. 6.(월) ~ ’26. 8. 4.(화), 15:00까지", source_url: "https://example.go.kr/notice" },
+        { field: "apply_end", quote: "연장 공고: 접수 마감 ’26. 8. 28.(금) 15:00까지", source_url: "https://example.go.kr/notice" },
+        { field: "amount_max_krw", quote: "사업화 자금 기업당 최대 5,000만원", source_url: "https://example.go.kr/notice" },
+      ],
+      requirements: [
+        {
+          text: "창업 7년 이내 기업",
+          evidence: { quote: "공고일 기준 사업자등록을 완료한 창업 7년 이내 기업", source_url: "https://example.go.kr/notice" },
+          branch_advice: null,
+        },
+      ],
+    });
+    const { report } = verifyExtraction(extraction, [doc(conflictText)]);
+    expect(report.conflicts).toHaveLength(1);
+    expect(report.publishable).toBe(false);
+    expect(report.gate_reason).toContain("마감일 상이");
+  });
+
   it("마감일 근거가 없으면 미발행", () => {
     const extraction = baseExtraction({
       overview_evidence: [
