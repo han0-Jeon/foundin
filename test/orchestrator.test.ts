@@ -7,15 +7,23 @@ import { renderMarkdown } from "../src/brief/render.js";
 import { matchProfile, profileSchema } from "../src/match/profile.js";
 import type { LlmRunner } from "../src/llm/runner.js";
 import type { CollectResult } from "../src/collect/index.js";
+import type { PrecheckResult } from "../src/collect/precheck.js";
 
 const NOTICE_URL = "https://example.go.kr/notice/241";
 const fixtureText = htmlToText(readFileSync(join(__dirname, "../fixtures/sample-notice.html"), "utf8"));
 
-const collectStub = async (): Promise<CollectResult> => ({
-  documents: [{ url: NOTICE_URL, kind: "html", title: "2026년 서울 초기창업 성장지원 사업 참여기업 모집 공고", text: fixtureText }],
-  skipped: [{ url: "https://example.go.kr/files/form_2026_241.hwp", kind: "hwp", fileName: "사업계획서 양식.hwp" }],
-  contact: { phones: ["02-123-4567"], emails: [] },
-});
+const collectStub = async (): Promise<CollectResult> => {
+  const doc = { url: NOTICE_URL, kind: "html" as const, title: "2026년 서울 초기창업 성장지원 사업 참여기업 모집 공고", text: fixtureText };
+  return {
+    documents: [doc],
+    rawDocuments: [doc],
+    skipped: [{ url: "https://example.go.kr/files/form_2026_241.hwp", kind: "hwp", fileName: "사업계획서 양식.hwp" }],
+    contact: { phones: ["02-123-4567"], emails: [] },
+  };
+};
+
+// 프리체크를 Solar 판정 경로(needs_llm)로 강제하는 스텁 — classify 를 태우는 테스트용.
+const forceNeedsLlm = async (): Promise<PrecheckResult> => ({ verdict: "needs_llm", tier: "tier1" });
 
 const classifyOk = JSON.stringify({
   is_program: true,
@@ -169,13 +177,58 @@ describe("오케스트레이터 엔드투엔드 (mock)", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("공고가 아니면 반려", async () => {
+  it("공고가 아니면 반려 (프리체크 애매 → Solar 판정)", async () => {
     const runner = mockRunner({
       classify: JSON.stringify({ is_program: false, reason: "선정 결과 발표 페이지", title: null, organizer: null }),
     });
-    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub });
+    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub, precheckImpl: forceNeedsLlm });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.not_a_program).toBe(true);
+    expect(runner.calls).toContain("classify");
+  });
+});
+
+describe("프리체크 통합 (오케스트레이터)", () => {
+  it("pass_fast: 공공 도메인 + 공고 패턴 → Solar 판정(classify) 생략 후 발행", async () => {
+    const runner = mockRunner();
+    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.brief.tier).toBe("tier1");
+    expect(runner.calls).not.toContain("classify"); // pass_fast 이므로 판정 스텝 생략
+    expect(runner.calls.some((call) => call.startsWith("extract"))).toBe(true);
+  });
+
+  it("reject: 프리체크 반려 → not_a_program (추출 없이 즉시 종료)", async () => {
+    const runner = mockRunner();
+    const reject = async (): Promise<PrecheckResult> => ({ verdict: "reject", tier: "tier3", reason: "IP 리터럴 호스트" });
+    const stages: unknown[] = [];
+    const result = await analyzeUrl(NOTICE_URL, {
+      runner,
+      collectImpl: collectStub,
+      precheckImpl: reject,
+      onStageA: (info) => void stages.push(info),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.not_a_program).toBe(true);
+    expect(result.tier).toBe("tier3");
+    expect(runner.calls).toHaveLength(0); // LLM 호출 없음
+    expect(stages).toEqual([{ is_program: false, tier: "tier3", reason: "IP 리터럴 호스트" }]);
+  });
+
+  it("onStageA: needs_llm 판정 후 is_program 을 보고한다", async () => {
+    const runner = mockRunner();
+    const stages: { is_program: boolean; tier: string }[] = [];
+    const result = await analyzeUrl(NOTICE_URL, {
+      runner,
+      collectImpl: collectStub,
+      precheckImpl: forceNeedsLlm,
+      onStageA: (info) => void stages.push(info),
+    });
+    expect(result.ok).toBe(true);
+    expect(stages).toHaveLength(1);
+    expect(stages[0]).toMatchObject({ is_program: true, tier: "tier1" });
   });
 });
