@@ -20,14 +20,14 @@ const classifyOk = JSON.stringify({
   is_program: true,
   reason: "지원금·신청 자격·접수 기간이 명시된 모집 공고",
   title: "2026년 서울 초기창업 성장지원 사업",
-  organizer: "서울경제진흥원",
+  organizer: "예시경제진흥원",
 });
 
 function extractionJson(withHallucination: boolean): string {
   return JSON.stringify({
     overview: {
       title: "2026년 서울 초기창업 성장지원 사업",
-      organizer: "서울경제진흥원",
+      organizer: "예시경제진흥원",
       apply_start: "2026-07-21",
       apply_end: "2026-08-14",
       apply_end_time: "16:00",

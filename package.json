@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "1인 창업자를 위한 정부지원사업 판단 브리프 에이전트 (Upstage Solar Open 2)",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "analyze": "tsx src/cli.ts analyze",
     "today": "tsx src/cli.ts today",
@@ -14,6 +16,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "cfb": "^1.2.2",
+    "fflate": "^0.8.3",
     "pdf-parse": "^1.1.1",
     "zod": "^3.23.8"
   },
