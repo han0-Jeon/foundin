@@ -24,6 +24,29 @@ describe("날짜·금액 재대조", () => {
     expect(dateMatchesQuote("2026-08-14", "8월 14일 마감")).toBe(true);
     expect(dateMatchesQuote("2026-08-14", "2026년 8월 14일까지")).toBe(true);
   });
+  it("두 자리 연도 압축 표기 (kocca 접수마감일 표)", () => {
+    expect(dateMatchesQuote("2026-07-21", "- 접수마감일 26.07.21")).toBe(true);
+    expect(dateMatchesQuote("2011-06-22", "- 접수마감일 11.06.22")).toBe(true);
+    expect(dateMatchesQuote("2025-07-21", "- 접수마감일 26.07.21")).toBe(false); // 연도 불일치
+  });
+  it("굽은 따옴표 두 자리 연도 (HWP·PDF 추출 텍스트)", () => {
+    const quote = "□ (접수기간) ‘26. 7. 20.(월) ~ ’26. 8. 4.(화), 15:00까지";
+    expect(dateMatchesQuote("2026-07-20", quote)).toBe(true);
+    expect(dateMatchesQuote("2026-08-04", quote)).toBe(true);
+    expect(dateMatchesQuote("2026-08-05", quote)).toBe(false);
+    expect(dateMatchesQuote("2026-07-08", "온라인으로만 신청 가능, 접수마감(‘26.7.8.(수) 16:00) 이후 수정 불가")).toBe(true);
+    expect(dateMatchesQuote("2023-05-26", "□신청기간:(당초)‘23.5.26(금)~6.30(금)")).toBe(true);
+  });
+  it("요일 괄호로 닫히는 월.일 (범위 뒤쪽 표기)", () => {
+    expect(dateMatchesQuote("2026-07-21", "신청기간: 2026. 7. 3(금) ~ 7. 21(화) 11:00 까지")).toBe(true);
+    expect(dateMatchesQuote("2023-06-30", "□신청기간:(당초)‘23.5.26(금)~6.30(금)")).toBe(true);
+    expect(dateMatchesQuote("2026-08-14", "접수: 7. 1.(화) ~ 8. 14.(목) 16:00")).toBe(true);
+  });
+  it("오파싱 방지 — 날짜 아닌 숫자는 날짜로 해석하지 않음", () => {
+    expect(dateMatchesQuote("2001-06-22", "총 사업비 1.06.22")).toBe(false); // 두 자리 세 그룹이 아니면 연도 아님
+    expect(dateMatchesQuote("2026-07-21", "규정 제26.07.211호")).toBe(false); // 뒤에 숫자가 이어지면 아님
+    expect(dateMatchesQuote("2026-13-05", "26.13.05")).toBe(false); // 월 범위 밖
+  });
   it("금액 파싱", () => {
     expect(parseKrwAmounts("기업당 최대 5,000만원")).toContain(50_000_000);
     expect(parseKrwAmounts("최대 1억원 지원")).toContain(100_000_000);

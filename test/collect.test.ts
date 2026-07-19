@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { decodeEntities, extractTitle, findAttachmentLinks, htmlToText } from "../src/collect/html.js";
-import { collectDocuments, kstartupSiblingUrl } from "../src/collect/index.js";
+import { collectDocuments, kstartupSiblingUrl, naverBlogMobileUrl } from "../src/collect/index.js";
 import { normalizeRawUrl } from "../src/collect/fetch.js";
 
 const fixture = readFileSync(join(__dirname, "../fixtures/sample-notice.html"), "utf8");
@@ -90,5 +90,15 @@ describe("원문 URL 오염 보정 (normalizeRawUrl)", () => {
   it("정상 URL·비 URL 문자열은 그대로", () => {
     expect(normalizeRawUrl("https://ok.go.kr/x")).toBe("https://ok.go.kr/x");
     expect(normalizeRawUrl("not a url")).toBe("not a url");
+  });
+});
+
+describe("네이버 블로그 모바일 폴백", () => {
+  it("blog.naver.com → m.blog.naver.com (그 외 호스트는 null)", () => {
+    expect(naverBlogMobileUrl("https://blog.naver.com/user123/224148568313")).toBe(
+      "https://m.blog.naver.com/user123/224148568313",
+    );
+    expect(naverBlogMobileUrl("https://m.blog.naver.com/user123/1")).toBeNull();
+    expect(naverBlogMobileUrl("https://example.go.kr/notice")).toBeNull();
   });
 });

@@ -8,32 +8,48 @@ export interface ParsedDate {
 }
 
 export function parseKoreanDates(text: string): ParsedDate[] {
-  const results: ParsedDate[] = [];
-  const seen = new Set<string>();
-  const push = (year: number | null, month: number, day: number) => {
+  const found: { date: ParsedDate; index: number }[] = [];
+  const add = (index: number, year: number | null, month: number, day: number) => {
     if (month < 1 || month > 12 || day < 1 || day > 31) return;
-    const key = `${year ?? "?"}-${month}-${day}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      results.push({ year, month, day });
-    }
+    found.push({ date: { year, month, day }, index });
   };
 
   // 2026-08-14 / 2026.8.14 / 2026년 8월 14일 / 2026/08/14
   for (const m of text.matchAll(/(\d{4})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/g)) {
-    push(Number(m[1]), Number(m[2]), Number(m[3]));
+    add(m.index ?? 0, Number(m[1]), Number(m[2]), Number(m[3]));
   }
-  // '26. 8. 14
-  for (const m of text.matchAll(/['']\s*(\d{2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{1,2})/g)) {
-    push(2000 + Number(m[1]), Number(m[2]), Number(m[3]));
+  // '26. 8. 14 / ‘26. 7. 6.(월) / ’26.6.19 — HWP·PDF 추출 텍스트는 굽은 따옴표(U+2018/2019)를 그대로 남긴다
+  for (const m of text.matchAll(/['‘’`´]\s*(\d{2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{1,2})/g)) {
+    add(m.index ?? 0, 2000 + Number(m[1]), Number(m[2]), Number(m[3]));
+  }
+  // 11.06.22 / 26.07.21 — 두 자리 연도 압축 표기 (kocca 접수마감일 표 등).
+  // 세 그룹 모두 정확히 두 자리 붙임꼴일 때만 연도로 해석 (소수·번호 매김 오인 방지)
+  for (const m of text.matchAll(/(?<![\d.])(\d{2})\.(\d{2})\.(\d{2})(?!\d)/g)) {
+    add(m.index ?? 0, 2000 + Number(m[1]), Number(m[2]), Number(m[3]));
   }
   // 8월 14일 (연도 없음)
   for (const m of text.matchAll(/(?<!\d[.\-\/년]\s?)(\d{1,2})\s*월\s*(\d{1,2})\s*일/g)) {
-    push(null, Number(m[1]), Number(m[2]));
+    add(m.index ?? 0, null, Number(m[1]), Number(m[2]));
   }
   // 8. 14. (연도 없는 축약 — 앞에 4자리 연도가 붙지 않은 경우만)
   for (const m of text.matchAll(/(?<![\d.])(\d{1,2})\s*\.\s*(\d{1,2})\s*\.(?!\s*\d)/g)) {
-    push(null, Number(m[1]), Number(m[2]));
+    add(m.index ?? 0, null, Number(m[1]), Number(m[2]));
+  }
+  // 7. 21(화) — 마침표 대신 요일 괄호로 닫히는 월.일 (범위 뒤쪽에 흔함: "7. 3(금) ~ 7. 21(화)")
+  for (const m of text.matchAll(/(?<![\d.])(\d{1,2})\s*\.\s*(\d{1,2})\s*\(\s*[월화수목금토일]/g)) {
+    add(m.index ?? 0, null, Number(m[1]), Number(m[2]));
+  }
+
+  // 텍스트 등장 순 정렬 — 범위 표기("시작 ~ 마감")에서 마지막 날짜가 마감이라는 순서 정보를 보존
+  found.sort((a, b) => a.index - b.index);
+  const seen = new Set<string>();
+  const results: ParsedDate[] = [];
+  for (const { date } of found) {
+    const key = `${date.year ?? "?"}-${date.month}-${date.day}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(date);
+    }
   }
   return results;
 }

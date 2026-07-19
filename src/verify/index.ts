@@ -107,9 +107,11 @@ export function verifyExtraction(extraction: Extraction, documents: SourceDocume
   if (extraction.overview.apply_end && applyEndEvidences.length > 1) {
     const distinctFullDates = new Set<string>();
     for (const evidence of applyEndEvidences) {
-      for (const parsed of parseKoreanDates(evidence.quote)) {
-        if (parsed.year !== null) distinctFullDates.add(`${parsed.year}-${parsed.month}-${parsed.day}`);
-      }
+      // 범위 표기("‘26. 7. 20. ~ ’26. 8. 4.")는 마지막 완전 날짜가 마감 —
+      // 시작일까지 모으면 정상 범위 인용끼리도 충돌로 오판하므로 인용당 하나만 대표로 쓴다
+      const fullDates = parseKoreanDates(evidence.quote).filter((parsed) => parsed.year !== null);
+      const last = fullDates[fullDates.length - 1];
+      if (last) distinctFullDates.add(`${last.year}-${last.month}-${last.day}`);
     }
     if (distinctFullDates.size > 1) {
       conflicts.push(`apply_end: 문서 간 마감일 상이 (${[...distinctFullDates].join(" vs ")})`);

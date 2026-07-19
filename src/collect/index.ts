@@ -59,6 +59,28 @@ export function kstartupSiblingUrl(rawUrl: string): string | null {
   return url.toString();
 }
 
+/**
+ * 네이버 블로그 데스크톱 주소는 본문 없는 iframe 셸을 서빙한다 — 모바일 주소(m.blog)는
+ * 서버 렌더링이라 본문이 HTML 에 있다. 지자체·기관이 블로그로 공고를 올리는 케이스 대응.
+ */
+export function naverBlogMobileUrl(rawUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  if (host !== "blog.naver.com" && host !== "www.blog.naver.com") return null;
+  url.hostname = "m.blog.naver.com";
+  return url.toString();
+}
+
+/** 본문이 얇을 때 시도할 형제 주소 (K-Startup ongoing↔deadline, 네이버 블로그 모바일) */
+function siblingUrl(rawUrl: string): string | null {
+  return kstartupSiblingUrl(rawUrl) ?? naverBlogMobileUrl(rawUrl);
+}
+
 /** 원문에서 연락처를 뽑고(표시용), 문서 텍스트는 마스킹(Solar 전송용)해서 돌려준다. */
 function redactDocuments(documents: SourceDocument[]): {
   masked: SourceDocument[];
@@ -158,9 +180,10 @@ export async function collectDocuments(url: string, options: CollectOptions = {}
   let html = decodeText(main.bytes, main.contentType);
   let pageText = htmlToText(html);
 
-  // K-Startup 셸 폴백: 본문이 임계 미만이면 형제 경로(ongoing↔deadline)를 시도해 더 긴 쪽을 쓴다.
+  // 셸 폴백: 본문이 임계 미만이면 형제 주소(K-Startup ongoing↔deadline, 네이버 블로그 모바일)를
+  // 시도해 더 긴 쪽을 쓴다.
   if (pageText.length < KSTARTUP_SHELL_TEXT) {
-    const sibling = kstartupSiblingUrl(main.finalUrl) ?? kstartupSiblingUrl(url);
+    const sibling = siblingUrl(main.finalUrl) ?? siblingUrl(url);
     if (sibling) {
       try {
         const alt = await guardedFetch(sibling, options);
