@@ -16,8 +16,14 @@ export interface OcrDeps {
   timeoutMs?: number;
 }
 
+// 키 우선순위: FOUNDIN_OCR_KEY(전용) → UPSTAGE_API_KEY. 베타 Solar 키는 "승인 용도 외 사용 금지"
+// 조항이 있어, 일반 콘솔 키를 따로 쓸 수 있게 분리해둔다.
+function ocrKey(): string {
+  return process.env.FOUNDIN_OCR_KEY ?? process.env.UPSTAGE_API_KEY ?? "";
+}
+
 export function ocrEnabled(): boolean {
-  return process.env.FOUNDIN_OCR === "docparse" && Boolean(process.env.UPSTAGE_API_KEY);
+  return process.env.FOUNDIN_OCR === "docparse" && Boolean(ocrKey());
 }
 
 function stripHtml(html: string): string {
@@ -49,8 +55,8 @@ export function extractDocParseText(data: DocParseResponse): string {
 
 /** 이미지(포스터)·스캔 문서 바이트 → 텍스트. 실패 시 사유와 함께 throw. */
 export async function imageToText(bytes: Buffer, fileName: string | null, deps: OcrDeps = {}): Promise<string> {
-  const apiKey = deps.apiKey ?? process.env.UPSTAGE_API_KEY ?? "";
-  if (!apiKey) throw new Error("OCR 키 없음 (UPSTAGE_API_KEY)");
+  const apiKey = deps.apiKey ?? ocrKey();
+  if (!apiKey) throw new Error("OCR 키 없음 (FOUNDIN_OCR_KEY 또는 UPSTAGE_API_KEY)");
   const fetchImpl = deps.fetchImpl ?? fetch;
 
   const form = new FormData();
