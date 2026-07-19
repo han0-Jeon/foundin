@@ -1,0 +1,7 @@
+{
+  "biz_stage": "pre",
+  "regions": ["서울"],
+  "age": 34,
+  "has_biz_reg": false,
+  "industries": ["IT", "콘텐츠"]
+}

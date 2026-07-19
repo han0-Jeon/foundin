@@ -1,0 +1,4 @@
+# 오늘의 브리핑에 넣을 공고 URL — 한 줄에 하나 (# 은 주석)
+# 예: K-Startup, 기업마당, 지자체 공고 페이지 URL 을 붙여넣으세요.
+# https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn=000000
+# https://www.bizinfo.go.kr/web/lay1/bbs/S1T122C128/AS/74/view.do?pblancId=PBLN_000000000000000
