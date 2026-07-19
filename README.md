@@ -46,7 +46,7 @@ npm run typecheck
 
 ```
 공고 URL
-  → ① 수집: 원문 HTML + PDF·HWP·HWPX 첨부 (SSRF 가드, EUC-KR 대응. 암호화·DRM 문서만 "미분석" 표기)
+  → ① 수집: 원문 HTML + PDF·HWP·HWPX·DOCX 첨부 (SSRF 가드, EUC-KR 대응. 암호화·DRM 문서만 "미분석" 표기)
   → ①.5 프리체크: 출처 도메인 티어(공공 *.go.kr·화이트리스트 / 일반 / 반려) + 위험신호(선입금·계좌
        송금·주민번호·텔레그램 유도) + 공고 패턴 — 결정적 코드. 공공+공고면 즉시 통과(판정 생략),
        IP·punycode·유사도메인·신생 도메인·위험신호면 즉시 반려
@@ -78,7 +78,7 @@ npm run typecheck
 src/
 ├── agent/        오케스트레이터 + 프롬프트 (프리체크 → 판정 → 추출 → 조언)
 ├── verify/       결정적 검증기: 인용 대조 · 날짜/금액 재파싱 · 충돌 · 발행 게이트
-├── collect/      SSRF 가드 fetch · HTML/PDF/HWP/HWPX 텍스트 추출 · EUC-KR 디코드 · precheck(도메인 티어·위험신호)
+├── collect/      SSRF 가드 fetch · HTML/PDF/HWP/HWPX/DOCX 텍스트 추출 · EUC-KR 디코드 · precheck(도메인 티어·위험신호)
 ├── llm/          러너 추상화: solar (베타) | claude-code | codex (구독 CLI 폴백)
 ├── match/        로컬 프로필 매칭 (LLM 비전송)
 ├── brief/        브리프 렌더러 (Markdown/터미널)

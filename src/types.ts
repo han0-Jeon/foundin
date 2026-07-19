@@ -122,7 +122,7 @@ export type Advice = z.infer<typeof adviceSchema>;
 // ── 수집 문서 ────────────────────────────────────────────────
 export interface SourceDocument {
   url: string;
-  kind: "html" | "pdf" | "hwp" | "hwpx" | "text";
+  kind: "html" | "pdf" | "hwp" | "hwpx" | "docx" | "text";
   title: string | null;
   text: string;
 }

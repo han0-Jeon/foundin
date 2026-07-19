@@ -99,6 +99,24 @@ export function hwpToText(bytes: Buffer): string {
   return cleanText(text);
 }
 
+/** DOCX (OOXML) — word/document.xml 의 <w:t> 텍스트 노드 수집. HWPX 와 동일한 ZIP 패턴 */
+export function docxToText(bytes: Buffer): string {
+  const files = unzipSync(new Uint8Array(bytes));
+  const doc = files["word/document.xml"];
+  if (!doc) throw new Error("DOCX 본문 없음 (다른 ZIP 포맷)");
+  const xml = strFromU8(doc);
+  let out = "";
+  for (const paragraph of xml.split(/<\/w:p>/)) {
+    // run(w:r)이 단어 중간에서 쪼개지므로 <w:t>는 공백 없이 이어붙인다
+    const texts = [...paragraph.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
+      .map((match) => decodeEntities(match[1] ?? ""))
+      .join("")
+      .trim();
+    if (texts) out += `${texts}\n`;
+  }
+  return cleanText(out);
+}
+
 export function hwpxToText(bytes: Buffer): string {
   const files = unzipSync(new Uint8Array(bytes));
   const sectionNames = Object.keys(files)

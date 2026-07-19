@@ -2,7 +2,7 @@ import type { ContactInfo, SkippedAttachment, SourceDocument } from "../types.js
 import { decodeText, guardedFetch, type GuardedFetchOptions } from "./fetch.js";
 import { extractContact, hasContact, maskContact } from "./contact.js";
 import { extractTitle, findAttachmentLinks, htmlToText } from "./html.js";
-import { hwpToText, hwpxToText, looksLikeCfb, looksLikeZip } from "./hwp.js";
+import { docxToText, hwpToText, hwpxToText, looksLikeCfb, looksLikeZip } from "./hwp.js";
 import { pdfToText } from "./pdf.js";
 
 const ATTACHMENT_LIMIT = 3;
@@ -73,9 +73,23 @@ async function extractFile(bytes: Buffer, url: string, contentType: string | nul
   if (looksLikeCfb(bytes)) {
     return { kind: "hwp", text: hwpToText(bytes) };
   }
-  if (looksLikeZip(bytes) && (name.endsWith(".hwpx") || !name.match(/\.(zip|docx|xlsx|pptx)(?:$|[?#])/))) {
-    // HWPX 는 ZIP 컨테이너 — 섹션 XML 이 없으면 hwpxToText 가 사유와 함께 던진다
-    return { kind: "hwpx", text: hwpxToText(bytes) };
+  if (looksLikeZip(bytes)) {
+    // ZIP 컨테이너 3종 분기: DOCX / HWPX / (미지원 zip·xlsx·pptx)
+    if (name.match(/\.docx(?:$|[?#])/) || contentType?.includes("wordprocessingml")) {
+      return { kind: "docx", text: docxToText(bytes) };
+    }
+    if (name.endsWith(".hwpx") || !name.match(/\.(zip|xlsx|pptx)(?:$|[?#])/)) {
+      // 확장자 없는 다운로드 링크 대응: HWPX 시도 → 섹션 없으면 DOCX 폴백
+      try {
+        return { kind: "hwpx", text: hwpxToText(bytes) };
+      } catch (hwpxError) {
+        try {
+          return { kind: "docx", text: docxToText(bytes) };
+        } catch {
+          throw hwpxError; // 원 사유(HWPX 섹션 없음)가 더 정보적
+        }
+      }
+    }
   }
   if (contentType?.includes("text/plain") || name.endsWith(".txt")) {
     return { kind: "text", text: decodeText(bytes, contentType, false) };

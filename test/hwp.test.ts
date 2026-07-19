@@ -2,7 +2,7 @@ import { deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import * as CFB from "cfb";
 import { strToU8, zipSync } from "fflate";
-import { extractSectionText, hwpToText, hwpxToText } from "../src/collect/hwp.js";
+import { docxToText, extractSectionText, hwpToText, hwpxToText } from "../src/collect/hwp.js";
 
 const HWPTAG_PARA_TEXT = 67;
 
@@ -80,5 +80,23 @@ describe("HWPX 추출", () => {
   it("섹션 없는 ZIP → 명시적 실패", () => {
     const zip = Buffer.from(zipSync({ "readme.txt": strToU8("hello") }));
     expect(() => hwpxToText(zip)).toThrow(/섹션 없음/);
+  });
+});
+
+describe("DOCX 텍스트 추출", () => {
+  it("word/document.xml 의 w:t 노드 수집 — run 분절은 공백 없이 연결", () => {
+    const xml = `<?xml version="1.0"?><w:document xmlns:w="x"><w:body>
+      <w:p><w:r><w:t>신청 자격: 창업 </w:t></w:r><w:r><w:t>7년 이내</w:t></w:r></w:p>
+      <w:p><w:r><w:t>접수 기간: 2026-08-01 ~ 2026-08-14</w:t></w:r></w:p>
+    </w:body></w:document>`;
+    const zip = Buffer.from(zipSync({ "word/document.xml": strToU8(xml) }));
+    const text = docxToText(zip);
+    expect(text).toContain("신청 자격: 창업 7년 이내");
+    expect(text).toContain("접수 기간: 2026-08-01 ~ 2026-08-14");
+  });
+
+  it("document.xml 없는 ZIP → 명시적 실패", () => {
+    const zip = Buffer.from(zipSync({ "readme.txt": strToU8("hello") }));
+    expect(() => docxToText(zip)).toThrow(/DOCX 본문 없음/);
   });
 });
