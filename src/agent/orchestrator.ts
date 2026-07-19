@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { collectDocuments } from "../collect/index.js";
 import type { GuardedFetchOptions } from "../collect/fetch.js";
+import { precheck, type PrecheckDeps } from "../collect/precheck.js";
 import type { LlmRunner } from "../llm/runner.js";
 import {
   adviceSchema,
@@ -8,18 +9,32 @@ import {
   extractionSchema,
   type AnalysisResult,
   type Brief,
+  type DomainTier,
   type Extraction,
   type SourceDocument,
 } from "../types.js";
 import { verifyExtraction } from "../verify/index.js";
 import { ADVISE_SYSTEM, CLASSIFY_SYSTEM, EXTRACT_SYSTEM, adviseUser, classifyUser, extractUser } from "./prompts.js";
 
+/** STAGE A(수집·연락처·프리체크·판정) 완료 시점의 중간 보고. 워커가 서버로 전달한다. */
+export interface StageAInfo {
+  is_program: boolean;
+  tier: DomainTier;
+  reason?: string;
+}
+
 export interface AnalyzeDeps {
   runner: LlmRunner;
   fetchOptions?: GuardedFetchOptions;
   onStep?: (step: string, detail?: string) => void;
+  /** STAGE A 완료(공고 여부 확정) 시 1회 호출 — 워커의 중간 보고 훅 */
+  onStageA?: (info: StageAInfo) => void | Promise<void>;
   /** 테스트 주입용 */
   collectImpl?: typeof collectDocuments;
+  /** 테스트 주입용 — 프리체크 대체 */
+  precheckImpl?: typeof precheck;
+  /** 프리체크 옵션 (도메인 나이 조회 등) */
+  precheckDeps?: PrecheckDeps;
   /** 인용 검증 실패 시 재추출 횟수 (기본 1) */
   maxRepair?: number;
 }
@@ -87,11 +102,13 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
   // 1. 수집
   step("collect", "원문·첨부 수집");
   let documents: SourceDocument[];
+  let rawDocuments: SourceDocument[];
   let skipped;
   let contact = null;
   try {
     const result = await collect(url, deps.fetchOptions ?? {});
     documents = result.documents; // 연락처 마스킹된 텍스트 (Solar 전송용)
+    rawDocuments = result.rawDocuments; // 마스킹 전 원문 (로컬 프리체크 전용, Solar 미전송)
     skipped = result.skipped;
     contact = result.contact; // 마스킹 전 연락처 (표시 전용, Solar 미전송)
   } catch (error) {
@@ -103,20 +120,40 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     };
   }
 
-  // 2. 공고 판정
-  step("classify", "공고 여부 판정");
-  let classification;
-  try {
-    classification = await completeJson(
-      deps.runner,
-      { system: CLASSIFY_SYSTEM, user: classifyUser(documents), maxTokens: 800 },
-      classificationSchema,
-    );
-  } catch (error) {
-    return { ok: false, stage: "classify", reason: String(error instanceof Error ? error.message : error), source_url: url };
+  // 2. 프리체크 (결정적) — 출처 도메인·위험신호로 STAGE A 판정을 가속한다.
+  //    pass_fast: Tier1 + 공고 패턴 → Solar 판정 생략 · reject: 비공고 반려 · needs_llm: Solar 판정 수행
+  const finalUrl = rawDocuments[0]?.url ?? documents[0]?.url ?? url;
+  step("precheck", "출처 도메인·위험신호 프리체크");
+  const runPrecheck = deps.precheckImpl ?? precheck;
+  const pre = await runPrecheck(finalUrl, rawDocuments, deps.precheckDeps ?? {});
+  const tier = pre.tier;
+
+  if (pre.verdict === "reject") {
+    await deps.onStageA?.({ is_program: false, tier, reason: pre.reason });
+    return { ok: false, stage: "classify", not_a_program: true, reason: pre.reason ?? "프리체크 반려", tier, source_url: url };
   }
-  if (!classification.is_program) {
-    return { ok: false, stage: "classify", not_a_program: true, reason: classification.reason, source_url: url };
+
+  // 3. 공고 판정 — 프리체크가 애매(needs_llm)할 때만 Solar 를 태운다.
+  if (pre.verdict === "needs_llm") {
+    step("classify", "공고 여부 판정");
+    let classification;
+    try {
+      classification = await completeJson(
+        deps.runner,
+        { system: CLASSIFY_SYSTEM, user: classifyUser(documents), maxTokens: 800 },
+        classificationSchema,
+      );
+    } catch (error) {
+      return { ok: false, stage: "classify", reason: String(error instanceof Error ? error.message : error), tier, source_url: url };
+    }
+    if (!classification.is_program) {
+      await deps.onStageA?.({ is_program: false, tier, reason: classification.reason });
+      return { ok: false, stage: "classify", not_a_program: true, reason: classification.reason, tier, source_url: url };
+    }
+    await deps.onStageA?.({ is_program: true, tier, reason: classification.reason });
+  } else {
+    step("precheck", pre.reason ?? "공공 도메인 + 공고 패턴 — Solar 판정 생략");
+    await deps.onStageA?.({ is_program: true, tier, reason: pre.reason });
   }
 
   // 3. 추출 → 4. 검증 (실패 인용은 피드백 삼아 1회 재추출)
@@ -143,7 +180,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
       );
     } catch (error) {
       if (extraction) break; // 재추출 실패면 직전 결과로 진행
-      return { ok: false, stage: "extract", reason: String(error instanceof Error ? error.message : error), source_url: url };
+      return { ok: false, stage: "extract", reason: String(error instanceof Error ? error.message : error), tier, source_url: url };
     }
     extraction = latest;
     step("verify", "인용·날짜·숫자 원문 대조");
@@ -152,13 +189,14 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
   }
 
   if (!extraction || !outcome) {
-    return { ok: false, stage: "extract", reason: "추출 결과 없음", source_url: url };
+    return { ok: false, stage: "extract", reason: "추출 결과 없음", tier, source_url: url };
   }
   if (!outcome.report.publishable) {
     return {
       ok: false,
       stage: "verify",
       reason: outcome.report.gate_reason ?? "검증 게이트 미통과",
+      tier,
       source_url: url,
     };
   }
@@ -203,6 +241,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     source_url: url,
     analyzed_at: new Date().toISOString(),
     model: deps.runner.name,
+    tier,
     overview: extraction.overview,
     eligibility: extraction.eligibility,
     why_look: whyLook,

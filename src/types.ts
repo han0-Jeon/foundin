@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+// ── 출처 도메인 신뢰 티어 (프리체크) ─────────────────────────
+// tier1 = 공공(*.go.kr·화이트리스트) · tier2 = 일반 도메인(공공 아님 배지)
+// · tier3 = 반려(IP·punycode·유사도메인). 서버가 "공공기관 출처 아님" 배지에 쓴다.
+export type DomainTier = "tier1" | "tier2" | "tier3";
+
 // ── 근거 인용 ────────────────────────────────────────────────
 // quote 는 원문에서 "그대로 복사"돼야 하며, 검증기가 원문 대조에 실패하면 해당 항목은 보류된다.
 export const evidenceSchema = z.object({
@@ -157,6 +162,8 @@ export interface Brief {
   source_url: string;
   analyzed_at: string; // ISO
   model: string;
+  /** 출처 도메인 신뢰 티어 (프리체크 판정). 서버가 tier2 에 "공공기관 출처 아님" 배지를 붙인다. */
+  tier: DomainTier;
   overview: Overview;
   eligibility: EligibilityFacts;
   why_look: string | null;
@@ -179,7 +186,9 @@ export type AnalysisResult =
       ok: false;
       stage: "collect" | "classify" | "extract" | "verify";
       reason: string;
-      /** classify 단계에서 공고가 아니라고 판정된 경우 */
+      /** classify 단계에서 공고가 아니라고 판정된 경우 (프리체크 반려 포함) */
       not_a_program?: boolean;
+      /** 프리체크가 판정한 출처 티어 (collect 실패 전이면 없음) */
+      tier?: DomainTier;
       source_url: string;
     };

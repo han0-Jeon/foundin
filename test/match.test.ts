@@ -7,6 +7,7 @@ function makeBrief(overrides: Partial<Brief["eligibility"]>, applyEnd: string | 
     source_url: "https://example.go.kr/notice",
     analyzed_at: new Date().toISOString(),
     model: "test",
+    tier: "tier1",
     overview: {
       title: "테스트 공고",
       organizer: null,
