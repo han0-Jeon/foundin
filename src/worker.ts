@@ -151,7 +151,7 @@ async function lane(laneId: number): Promise<void> {
       });
       const seconds = ((Date.now() - started) / 1000).toFixed(1);
       const payload = result.ok
-        ? { job_id: job.id, status: "published", brief: result.brief, duration_s: Number(seconds) }
+        ? { job_id: job.id, status: "published", brief: result.brief, tier: result.brief.tier, duration_s: Number(seconds) }
         : {
             job_id: job.id,
             status: result.not_a_program ? "rejected" : result.stage === "verify" ? "held" : "failed",
