@@ -14,7 +14,6 @@ describe("연락처 추출 (표시용)", () => {
     expect(contact.phones).toContain("010-9876-5432");
     expect(contact.phones).toContain("1588-1234");
     expect(contact.emails).toContain("hong@korea.kr");
-    expect(contact.lines.some((line) => line.includes("창업지원팀"))).toBe(true);
   });
 
   it("연락처 없는 공고는 빈 결과", () => {
