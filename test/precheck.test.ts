@@ -120,6 +120,20 @@ describe("precheck() 판정", () => {
     expect(result.reason).toMatch(/입금|계좌|선입금/);
   });
 
+  it("첨부(신청서 양식)의 주민번호 동의·계좌 기재란은 위험 신호로 잡지 않는다 (랜딩 문서만 스캔)", async () => {
+    const documents = [
+      ...doc(NOTICE_TEXT, "https://www.k-startup.go.kr/notice/1"),
+      {
+        url: "https://www.k-startup.go.kr/afile/form.hwpx",
+        kind: "hwpx" as const,
+        title: "신청서 양식",
+        text: "개인정보 수집·이용 동의: 주민등록번호를 기재하여 제출합니다. 지원금 입금 계좌: (은행/계좌번호)",
+      },
+    ];
+    const result = await precheck("https://www.k-startup.go.kr/notice/1", documents, offline);
+    expect(result.verdict).toBe("pass_fast");
+  });
+
   it("Tier2 → needs_llm (pass_fast 대상 아님)", async () => {
     const result = await precheck("https://some-foundation.com/notice", doc(NOTICE_TEXT), offline);
     expect(result).toMatchObject({ verdict: "needs_llm", tier: "tier2" });

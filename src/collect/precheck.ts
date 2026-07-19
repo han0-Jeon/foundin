@@ -280,8 +280,10 @@ export async function precheck(
   const domain = classifyDomain(finalUrl);
   if (domain.tier === "tier3") return { verdict: "reject", tier: "tier3", reason: domain.reason };
 
-  // 2. 위험 신호 (전 티어 — Tier1 공공 도메인이라도 위험 패턴이면 반려)
-  const risk = scanRiskSignals(text);
+  // 2. 위험 신호 (전 티어, 단 **랜딩 문서만** 스캔) — 첨부 신청서 양식에는 "주민등록번호
+  //    수집 동의"·"지원금 입금 계좌" 기재란이 표준으로 들어가 오탐원이 된다 (100건 실측 오탐 9건).
+  //    피싱의 유인 문구는 피해자가 보는 랜딩 페이지에 있으므로 랜딩 문서 스캔으로 방어 의도는 유지된다.
+  const risk = scanRiskSignals(documents[0]?.text ?? "");
   if (risk) return { verdict: "reject", tier: domain.tier, reason: risk };
 
   // 3. Tier2 한정 도메인 나이 검사 (fail-open)

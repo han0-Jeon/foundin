@@ -9,7 +9,9 @@ import type { CompleteRequest, LlmRunner } from "./runner.js";
 
 const MAX_ATTEMPTS = 3;
 const REASONING_BUFFER_BASE = 4096;
-const REASONING_BUFFER_MAX = 16384;
+const REASONING_BUFFER_MAX = 32768;
+// 장문 추출(입력 26K + 생각 + 긴 JSON)은 3분을 넘길 수 있다 — 100건 실측에서 180초 타임아웃 19건
+const REQUEST_TIMEOUT_MS = 300_000;
 
 interface ChatMessage {
   role: "system" | "user";
@@ -59,7 +61,7 @@ export class SolarRunner implements LlmRunner {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(180_000),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
       } catch (error) {
         lastError = `network: ${error instanceof Error ? error.message : String(error)}`;
@@ -73,9 +75,14 @@ export class SolarRunner implements LlmRunner {
         };
         const choice = data.choices?.[0];
         const content = choice?.message?.content;
-        if (typeof content === "string" && content.trim()) return content;
+        // finish_reason=length 면 content 가 있어도 잘린 JSON — 파서로 넘기지 않고 버퍼 증량 재시도.
+        // (100건 실측: 잘린 JSON 이 파싱 단계까지 흘러가 "JSON 파싱 실패"로 죽던 케이스)
+        const truncated = choice?.finish_reason === "length";
+        if (typeof content === "string" && content.trim() && !truncated) return content;
+        lastError = truncated
+          ? "truncated content (finish_reason=length)"
+          : `empty content (finish_reason=${choice?.finish_reason ?? "?"})`;
         // 추론이 예산을 다 먹은 경우 — 버퍼를 키워 즉시 재시도 (백오프 불필요)
-        lastError = `empty content (finish_reason=${choice?.finish_reason ?? "?"})`;
         reasoningBuffer = Math.min(reasoningBuffer * 2, REASONING_BUFFER_MAX);
         continue;
       }
