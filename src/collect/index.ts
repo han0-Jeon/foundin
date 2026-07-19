@@ -8,6 +8,8 @@ import { pdfToText } from "./pdf.js";
 const ATTACHMENT_LIMIT = 3;
 const MIN_PAGE_TEXT = 80;
 const MIN_ATTACHMENT_TEXT = 40;
+// K-Startup 셸 페이지(빈 상세, 브레드크럼만 ~92자) 감지 임계 — 실제 상세는 수천 자
+const KSTARTUP_SHELL_TEXT = 300;
 
 export interface CollectResult {
   /** Solar 로 보낼 문서 — 연락처가 마스킹된 상태 */
@@ -17,6 +19,26 @@ export interface CollectResult {
   skipped: SkippedAttachment[];
   /** 원문에서 뽑은 담당자 연락처 (마스킹 전, 표시 전용) */
   contact: ContactInfo | null;
+}
+
+/**
+ * K-Startup 상세는 모집 상태에 따라 경로가 갈린다: 모집중=bizpbanc-ongoing.do,
+ * 마감=bizpbanc-deadline.do. 반대 경로로 접근하면 본문 없는 셸만 서빙되므로
+ * (마감된 공고를 ongoing 링크로 여는 경우가 대표적) 형제 경로를 폴백으로 시도한다.
+ */
+export function kstartupSiblingUrl(rawUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  if (host !== "k-startup.go.kr" && !host.endsWith(".k-startup.go.kr")) return null;
+  const match = url.pathname.match(/^(.*\/bizpbanc-)(ongoing|deadline)(\.do)$/);
+  if (!match || !url.searchParams.get("pbancSn")) return null;
+  url.pathname = `${match[1]}${match[2] === "ongoing" ? "deadline" : "ongoing"}${match[3]}`;
+  return url.toString();
 }
 
 /** 원문에서 연락처를 뽑고(표시용), 문서 텍스트는 마스킹(Solar 전송용)해서 돌려준다. */
@@ -69,7 +91,7 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
   const documents: SourceDocument[] = [];
   const skipped: SkippedAttachment[] = [];
 
-  const main = await guardedFetch(url, options);
+  let main = await guardedFetch(url, options);
 
   // 메인 URL 이 문서 파일 직링크인 경우
   if (looksLikePdf(main.contentType, main.finalUrl, main.bytes) || looksLikeCfb(main.bytes)) {
@@ -82,8 +104,28 @@ export async function collectDocuments(url: string, options: GuardedFetchOptions
     return { documents: single.masked, rawDocuments: single.raw, skipped, contact: single.contact };
   }
 
-  const html = decodeText(main.bytes, main.contentType);
-  const pageText = htmlToText(html);
+  let html = decodeText(main.bytes, main.contentType);
+  let pageText = htmlToText(html);
+
+  // K-Startup 셸 폴백: 본문이 임계 미만이면 형제 경로(ongoing↔deadline)를 시도해 더 긴 쪽을 쓴다.
+  if (pageText.length < KSTARTUP_SHELL_TEXT) {
+    const sibling = kstartupSiblingUrl(main.finalUrl) ?? kstartupSiblingUrl(url);
+    if (sibling) {
+      try {
+        const alt = await guardedFetch(sibling, options);
+        const altHtml = decodeText(alt.bytes, alt.contentType);
+        const altText = htmlToText(altHtml);
+        if (altText.length > pageText.length) {
+          main = alt;
+          html = altHtml;
+          pageText = altText;
+        }
+      } catch {
+        // 형제 경로 실패는 무시 — 원본 판정 그대로 진행
+      }
+    }
+  }
+
   if (pageText.length < MIN_PAGE_TEXT) {
     throw new Error("페이지에서 본문 텍스트를 찾지 못했습니다 (JS 렌더링 페이지 가능성)");
   }

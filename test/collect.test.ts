@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { decodeEntities, extractTitle, findAttachmentLinks, htmlToText } from "../src/collect/html.js";
+import { collectDocuments, kstartupSiblingUrl } from "../src/collect/index.js";
 
 const fixture = readFileSync(join(__dirname, "../fixtures/sample-notice.html"), "utf8");
 
@@ -28,5 +29,51 @@ describe("첨부 링크 탐색", () => {
     expect(kinds).toContain("pdf");
     expect(kinds).toContain("hwp");
     expect(links.every((link) => link.url.startsWith("https://example.go.kr/"))).toBe(true);
+  });
+});
+
+describe("K-Startup 셸 폴백", () => {
+  const ongoing = "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn=178072";
+  const deadline = "https://www.k-startup.go.kr/web/contents/bizpbanc-deadline.do?schM=view&pbancSn=178072";
+
+  it("kstartupSiblingUrl — ongoing↔deadline 상호 변환, 그 외 null", () => {
+    expect(kstartupSiblingUrl(ongoing)).toBe(deadline);
+    expect(kstartupSiblingUrl(deadline)).toBe(ongoing);
+    expect(kstartupSiblingUrl("https://www.k-startup.go.kr/web/main/index.do")).toBeNull();
+    expect(kstartupSiblingUrl("https://evilk-startup.go.kr/web/contents/bizpbanc-ongoing.do?pbancSn=1")).toBeNull();
+    expect(kstartupSiblingUrl("https://example.go.kr/notice?pbancSn=1")).toBeNull();
+  });
+
+  it("셸 페이지(본문 없음)면 형제 경로를 페치해 더 긴 본문을 쓴다", async () => {
+    const shellHtml = "<html><body>K-Startup 창업지원포털&gt;사업공고&gt;모집중&gt;상세화면 본문 바로가기 사업공고 모집중 어쩌고 저쩌고 껍데기</body></html>";
+    const fullBody = "지원대상: 예비창업자. 접수기간: 2026-06-10 ~ 2026-06-16. 제출서류: 사업계획서. ".repeat(20);
+    const fullHtml = `<html><body>${fullBody}</body></html>`;
+    const calls: string[] = [];
+    const fetchImpl = (async (input: Parameters<typeof fetch>[0]) => {
+      const target = String(input);
+      calls.push(target);
+      const body = target.includes("bizpbanc-deadline") ? fullHtml : shellHtml;
+      return new Response(body, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+    }) as typeof fetch;
+
+    const result = await collectDocuments(ongoing, { fetchImpl, skipGuard: true });
+    expect(calls.some((c) => c.includes("bizpbanc-deadline"))).toBe(true);
+    expect(result.documents[0]!.url).toContain("bizpbanc-deadline");
+    expect(result.documents[0]!.text).toContain("접수기간");
+  });
+
+  it("본문이 충분하면 형제 경로를 시도하지 않는다", async () => {
+    const fullBody = "지원대상: 예비창업자. 접수기간: 2026-06-10 ~ 2026-06-16. 제출서류: 사업계획서. ".repeat(20);
+    const calls: string[] = [];
+    const fetchImpl = (async (input: Parameters<typeof fetch>[0]) => {
+      calls.push(String(input));
+      return new Response(`<html><body>${fullBody}</body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }) as typeof fetch;
+
+    await collectDocuments(ongoing, { fetchImpl, skipGuard: true });
+    expect(calls.some((c) => c.includes("bizpbanc-deadline"))).toBe(false);
   });
 });
