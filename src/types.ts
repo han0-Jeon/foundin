@@ -127,6 +127,13 @@ export interface SkippedAttachment {
   fileName: string | null;
 }
 
+// 담당자 연락처 — 우리 코드가 원문에서 직접 추출(Solar 미전송), 브리프에 담아 사용자에게만 표시.
+export interface ContactInfo {
+  phones: string[];
+  emails: string[];
+  lines: string[];
+}
+
 // ── 검증 리포트 (결정적 계산, LLM 산출물 아님) ────────────────
 export interface VerificationReport {
   quotes_total: number;
@@ -161,6 +168,8 @@ export interface Brief {
   verification: VerificationReport;
   documents_meta: { url: string; kind: string; chars: number }[];
   skipped_attachments: SkippedAttachment[];
+  /** 담당자 연락처 (Solar 미전송, 표시 전용). 없으면 null. */
+  contact: ContactInfo | null;
   confidence: number;
 }
 
