@@ -28,6 +28,10 @@ data/raw/
 data/cache/
 scratch/
 tmp/
+.cache/
+out/
+urls.txt
+eval/calibration-report.md
 
 # os / editor
 .DS_Store

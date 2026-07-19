@@ -1,0 +1,36 @@
+// LLM 러너 추상화 — 오케스트레이션은 코드가 쥐고, 러너는 "프롬프트 → 텍스트" 만 담당한다.
+// solar: Upstage API (베타, ~2026-08-01)
+// claude-code / codex: 구독 CLI 서브프로세스 (무과금 원칙, 8/1 이후 폴백)
+
+export interface CompleteRequest {
+  system?: string;
+  user: string;
+  /** JSON 응답을 기대함 (지원 시 response_format 사용, 미지원 모델은 프롬프트로만 유도) */
+  json?: boolean;
+  maxTokens?: number;
+  temperature?: number;
+}
+
+export interface LlmRunner {
+  name: string;
+  complete(req: CompleteRequest): Promise<string>;
+}
+
+export type RunnerKind = "solar" | "claude-code" | "codex";
+
+export async function createRunner(kind?: string): Promise<LlmRunner> {
+  const resolved = (kind ?? process.env.FOUNDIN_RUNNER ?? "solar") as RunnerKind;
+  switch (resolved) {
+    case "solar": {
+      const { SolarRunner } = await import("./solar.js");
+      return new SolarRunner();
+    }
+    case "claude-code":
+    case "codex": {
+      const { CliRunner } = await import("./cli-runner.js");
+      return new CliRunner(resolved);
+    }
+    default:
+      throw new Error(`unknown runner: ${resolved} (solar | claude-code | codex)`);
+  }
+}
