@@ -1,13 +1,13 @@
 # foundin
 
-**1인 창업자를 위한 정부지원사업 판단 브리프 에이전트.** Upstage **Solar Open 2** 가 공고 원문과 첨부를
-심사역처럼 정독하고, 자격·지원금·마감·서류·탈락 위험을 추출한 뒤, **모든 인용을 원문과 기계 대조**해
-검증을 통과한 것만 "지원 전 판단 브리프"로 발행한다.
+**1인 창업자를 위한 정부지원사업 판단 브리프 에이전트입니다.** Upstage **Solar Open 2**가 공고 원문과
+첨부를 심사역처럼 정독하고 자격·지원금·마감·서류·탈락 위험을 추출하면, 코드가 **모든 인용을 원문과
+기계 대조**합니다. 검증을 통과한 것만 "지원 전 판단 브리프"로 발행합니다.
 
-> founding(창업)에서 g 하나를 뺀 이름이자, found in(찾아냈다)이기도 하다.
+> founding(창업)에서 g 하나를 뺀 이름이고, found in(찾아냈다)이기도 합니다.
 
-[foundin.kr](https://foundin.kr) 의 분석 엔진이 이 저장소다. 프로덕션 편집국(워커)과 심사자가 실행하는
-CLI 가 **완전히 같은 코드**를 쓴다.
+[foundin.kr](https://foundin.kr)의 분석 엔진이 이 저장소입니다. 프로덕션 워커와 심사자가 실행하는
+CLI가 완전히 같은 코드를 씁니다.
 
 ## 빠른 시작
 
@@ -15,21 +15,21 @@ CLI 가 **완전히 같은 코드**를 쓴다.
 npm install
 cp .env.example .env        # UPSTAGE_API_KEY 입력
 
-# 아무 공고 URL 하나 분석 — 수집 → 판정 → 추출 → 원문 대조 검증 → 브리프
+# 공고 URL 하나 분석 — 수집 → 판정 → 추출 → 원문 대조 검증 → 브리프
 npm run analyze -- "https://www.k-startup.go.kr/...(공고 URL)"
 
 # 내 조건(로컬 JSON)과 대조까지
 npm run analyze -- "https://...(공고 URL)" --profile examples/profile.pre-seoul.json
 ```
 
-여러 공고를 읽고 "오늘 확인해야 할 공고"로 정리하는 브리핑 모드:
+여러 공고를 읽고 "오늘 확인해야 할 공고"로 정리하는 브리핑 모드도 있습니다.
 
 ```bash
 cp urls.example.txt urls.txt   # 공고 URL 을 한 줄에 하나씩
 npm run today -- --profile examples/profile.pre-seoul.json
 ```
 
-오프라인 검증 (API 키 불필요):
+API 키 없이 오프라인으로 검증만 돌려볼 수도 있습니다.
 
 ```bash
 npm test          # 검증기·수집기·매칭·오케스트레이터 (mock 러너 엔드투엔드)
@@ -38,9 +38,9 @@ npm run typecheck
 
 ## 왜 만들었나
 
-정부지원사업 공고는 본문·첨부에 자격 요건이 흩어져 있고, 한 줄을 놓치면 서류를 다 쓰고 나서
-탈락한다. LLM 요약은 이 문제를 해결하는 것 같지만, **환각 한 번이면 사용자가 잘못된 판단**을 한다.
-그래서 이 에이전트는 "요약"이 아니라 **검증**을 중심에 놓았다.
+정부지원사업 공고는 본문과 첨부에 자격 요건이 흩어져 있어서, 한 줄을 놓치면 서류를 다 쓰고 나서
+탈락하게 됩니다. LLM 요약이 이 문제를 해결해줄 것 같지만, 환각이 한 번 섞이면 사용자가 잘못된
+판단을 내립니다. 그래서 이 에이전트는 "요약"이 아니라 **검증**을 중심에 놓았습니다.
 
 ## 어떻게 동작하나
 
@@ -59,18 +59,18 @@ npm run typecheck
   → 판단 브리프 (JSON + Markdown)
 ```
 
-설계 원칙 세 가지:
+설계 원칙은 세 가지입니다.
 
-1. **오케스트레이션은 코드가 쥔다.** LLM 은 각 스텝의 추론만 담당한다. 베타 모델의 능력 편차에
-   흔들리지 않고, tool calling 미지원이어도 동작한다.
-2. **인용은 실존해야 발행된다.** `src/verify/` 가 모든 evidence quote 를 NFKC 정규화 후 원문에서
-   substring 대조하고, 마감일·지원금은 인용문에서 값을 **재파싱해 재대조**한다. 지어낸 인용은
-   기계적으로 걸러진다.
-3. **개인정보는 LLM 에 보내지 않는다.** 개인화(내 조건 대조)는 `src/match/` 의 결정적 규칙이 로컬에서
-   수행한다. Solar 에는 공개 공고 원문만 전달된다. 대신 공고 쪽에서 "처지별 분기 조언"을 미리
-   생성해두고 클라이언트가 자기 분기만 렌더한다 — 개인화 체감과 개인정보 비전송을 동시에 얻는다.
-   공고문에 흔히 든 담당자 연락처(이름·전화·이메일)도 `src/collect/contact.ts` 가 Solar 로 보내기
-   전에 마스킹하고, 표시용 값은 우리 코드가 따로 뽑아 브리프에 담는다.
+1. **오케스트레이션은 코드가 쥡니다.** LLM은 각 스텝의 추론만 담당합니다. 베타 모델의 능력 편차에
+   흔들리지 않고, tool calling이 없어도 동작합니다.
+2. **인용은 실존해야 발행됩니다.** `src/verify/`가 모든 evidence quote를 NFKC 정규화 후 원문에서
+   substring 대조하고, 마감일과 지원금은 인용문에서 값을 재파싱해 한 번 더 대조합니다. 지어낸
+   인용은 기계적으로 걸러집니다.
+3. **개인정보는 LLM에 보내지 않습니다.** 개인화(내 조건 대조)는 `src/match/`의 결정적 규칙이
+   로컬에서 수행하고, Solar에는 공개 공고 원문만 전달됩니다. 대신 공고 쪽에서 "처지별 분기 조언"을
+   미리 생성해두고 클라이언트가 자기 분기만 렌더합니다. 개인화 체감과 개인정보 비전송을 동시에
+   얻는 방법입니다. 공고문에 흔히 있는 담당자 연락처(이름·전화·이메일)도 `src/collect/contact.ts`가
+   Solar로 보내기 전에 마스킹하고, 표시용 값은 코드가 따로 뽑아 브리프에 담습니다.
 
 ## 저장소 구조
 
@@ -81,9 +81,10 @@ src/
 ├── collect/      SSRF 가드 fetch · HTML/PDF/HWP/HWPX/DOCX 텍스트 추출 · EUC-KR 디코드 · precheck(도메인 티어·위험신호)
 ├── llm/          러너 추상화: solar (베타) | claude-code | codex (구독 CLI 폴백)
 ├── match/        로컬 프로필 매칭 (LLM 비전송)
-├── brief/        브리프 렌더러 (Markdown/터미널)
+├── brief/        브리프 렌더러 (Markdown/터미널/MCP)
 ├── cli.ts        analyze · today
-└── worker.ts     foundin.kr 편집국 큐 폴링 워커 (STAGE A 중간 보고 · Supabase Realtime 즉시 깨우기 + 20초 폴링 폴백)
+├── mcp.ts        MCP 서버 (experimental)
+└── worker.ts     foundin.kr 큐 폴링 워커 (STAGE A 중간 보고 · Supabase Realtime 즉시 깨우기 + 20초 폴링 폴백)
 eval/calibrate.ts 모델 캘리브레이션 (JSON 준수율·장문·지연·tool calling 프로브)
 eval/batch.ts     배치 평가 하니스 (발행/반려/보류율·인용 통과율·소요시간 집계, 지표 전용·무발행)
 fixtures/ test/   오프라인 픽스처와 테스트
@@ -91,41 +92,40 @@ fixtures/ test/   오프라인 픽스처와 테스트
 
 ## 다른 AI 에이전트에서 도구로 쓰기 (MCP, experimental)
 
-foundin 은 MCP(Model Context Protocol) 서버를 내장한다. Hermes Agent·Claude Code·Cursor 등
-MCP 클라이언트에 등록하면, 대화하다가 공고 분석이 필요할 때 에이전트가 foundin 의 검증
-파이프라인을 도구로 호출한다. **대화층은 사실을 만들지 못하고, 원문 대조 검증을 통과한 도구
-출력만 전달받는 구조다.**
+foundin은 MCP(Model Context Protocol) 서버를 내장하고 있습니다. Hermes Agent·Claude Code·Cursor 등
+MCP 클라이언트에 등록해두면, 대화 중에 공고 분석이 필요할 때 에이전트가 foundin의 검증 파이프라인을
+도구로 호출합니다. **대화층은 사실을 만들지 못하고, 원문 대조 검증을 통과한 도구 출력만 전달받는
+구조입니다.**
 
 ```jsonc
 // 에이전트의 MCP 설정에 추가 (예: Claude Code 의 .mcp.json)
 { "mcpServers": { "foundin": { "command": "npm", "args": ["run", "mcp"], "cwd": "<클론 경로>" } } }
 ```
 
-도구 3종: `analyze_announcement(url)` 정독·검증 브리프 (신규 URL 은 4~6분) ·
-`check_eligibility(url, profile)` 조건 대조 (프로필은 로컬 규칙 매칭 전용, **LLM 미전송**) ·
+도구는 세 개입니다: `analyze_announcement(url)` 정독·검증 브리프 (신규 URL은 4~6분 소요),
+`check_eligibility(url, profile)` 조건 대조 (프로필은 로컬 규칙 매칭 전용, **LLM 미전송**),
 `today(urls, profile)` 우선순위 브리핑.
 
-알아둘 것:
+미리 알아두시면 좋은 것들:
 
-- LLM 비용은 자신의 키로 나간다. 베타 키가 없다면 `.env` 에 `UPSTAGE_MODEL=solar-pro3` 등
-  일반 콘솔 키로 쓸 수 있는 모델을 지정할 것
-- 도구는 담당자 연락처를 출력에 포함하지 않으며(원칙: 연락처 LLM 비전송), 원문 인용은
-  "지시 아님" 데이터 블록에 격리된다. 단, **당신이 채팅창에 직접 쓴 내용은 당신 에이전트의
-  대화로 전송된다** — 그 경계는 사용자 몫이다
-- 신뢰하지 않는 URL 을 분석시킬 때는 에이전트의 파일·셸 권한을 제한하는 것을 권장한다
-  (외부 문서를 읽는 모든 도구의 공통 주의사항)
-- experimental: 인터페이스가 바뀔 수 있고, 이슈 대응은 베스트 에포트다
+- LLM 비용은 사용자 본인의 키로 나갑니다. 베타 키가 없다면 `.env`에 `UPSTAGE_MODEL=solar-pro3` 등
+  일반 콘솔 키로 쓸 수 있는 모델을 지정하세요
+- 도구는 담당자 연락처를 출력에 포함하지 않고(연락처 LLM 비전송 원칙), 원문 인용은 "지시 아님"
+  데이터 블록에 격리됩니다. 다만 **채팅창에 직접 입력하신 내용은 본인 에이전트의 대화로 전송됩니다.**
+  그 경계는 사용자의 몫입니다
+- 신뢰하지 않는 URL을 분석시킬 때는 에이전트의 파일·셸 권한을 제한하시길 권합니다
+  (외부 문서를 읽는 모든 도구의 공통 주의사항입니다)
+- experimental 단계라 인터페이스가 바뀔 수 있고, 이슈 대응은 베스트 에포트입니다
 
 ## 프로덕션에서는
 
-foundin.kr 에서 이 에이전트는 세 경로로 실행된다.
+foundin.kr에서 이 에이전트는 두 경로로 실행됩니다.
 
-- 신규 수집 공고: 자동 브리프 생성 (편집국 워커가 큐 폴링)
-- 기존 공고: "분석 요청" 투표 순서대로 처리
-- 사용자가 가져온 외부 공고 URL: 게이트를 통과하면 공개 분석 페이지로 발행
+- 신규 수집 공고: 워커가 큐를 폴링해 자동으로 브리프를 생성합니다
+- 사용자가 가져온 외부 공고 URL: 검증 게이트를 통과하면 공개 분석 페이지로 발행됩니다
 
-Solar Open 2 베타 종료(2026-08-01) 후에는 러너를 `claude-code` / `codex` (구독 CLI, OAuth) 로
-전환해 같은 파이프라인이 계속 돈다 (`FOUNDIN_RUNNER` 환경변수 하나).
+Solar Open 2 베타 종료(2026-08-01) 후에는 러너를 `claude-code` / `codex` (구독 CLI, OAuth)로
+전환해 같은 파이프라인이 계속 돕니다 (`FOUNDIN_RUNNER` 환경변수 하나로 바뀝니다).
 
 ## Solar Open 2 (Stage 1)
 
@@ -135,7 +135,7 @@ Solar Open 2 베타 종료(2026-08-01) 후에는 러너를 `claude-code` / `code
 | Rate Limit | 400 RPM / 150,000 TPM |
 | Console | https://console.upstage.ai |
 
-API 키는 `.env` 로만 관리한다. 커밋 금지.
+API 키는 `.env`로만 관리합니다. 커밋하지 마세요.
 
 ## 로드맵
 
@@ -144,5 +144,6 @@ API 키는 `.env` 로만 관리한다. 커밋 금지.
 
 ## 참고
 
-- Upstage Solar Agent Partner Program Stage 1 (2026-07-17 ~ 07-31) 참여작
-- 모든 브리프는 **참고용**이며 최종 확인은 공고 원문에서 해야 한다. 브리프에는 항상 원문 링크가 포함된다.
+- Upstage Solar Agent Partner Program Stage 1 (2026-07-17 ~ 07-31) 참여작입니다
+- 모든 브리프는 **참고용**입니다. 최종 확인은 반드시 공고 원문에서 해주세요. 브리프에는 항상 원문
+  링크가 포함됩니다
