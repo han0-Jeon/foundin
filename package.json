@@ -14,9 +14,11 @@
     "calibrate": "tsx eval/calibrate.ts",
     "eval": "tsx eval/batch.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mcp": "tsx src/mcp.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.110.7",
     "cfb": "^1.2.2",
     "fflate": "^0.8.3",

@@ -15,6 +15,8 @@ export interface GuardedFetchOptions {
   fetchImpl?: typeof fetch;
   /** 테스트용 — DNS·사설 IP 검사 생략 */
   skipGuard?: boolean;
+  /** UA 오버라이드 — 배포용 도구(MCP·CLI)는 프로덕션 워커와 평판을 분리한다 */
+  userAgent?: string;
 }
 
 export interface FetchedResource {
@@ -103,7 +105,7 @@ export async function guardedFetch(rawUrl: string, options: GuardedFetchOptions 
 
     const response = await fetchImpl(current.toString(), {
       redirect: "manual",
-      headers: { "User-Agent": USER_AGENT, Accept: "*/*" },
+      headers: { "User-Agent": options.userAgent ?? USER_AGENT, Accept: "*/*" },
       signal: AbortSignal.timeout(timeoutMs),
     });
 

@@ -89,6 +89,33 @@ eval/batch.ts     배치 평가 하니스 (발행/반려/보류율·인용 통�
 fixtures/ test/   오프라인 픽스처와 테스트
 ```
 
+## 다른 AI 에이전트에서 도구로 쓰기 (MCP, experimental)
+
+foundin 은 MCP(Model Context Protocol) 서버를 내장한다. Hermes Agent·Claude Code·Cursor 등
+MCP 클라이언트에 등록하면, 대화하다가 공고 분석이 필요할 때 에이전트가 foundin 의 검증
+파이프라인을 도구로 호출한다. **대화층은 사실을 만들지 못하고, 원문 대조 검증을 통과한 도구
+출력만 전달받는 구조다.**
+
+```jsonc
+// 에이전트의 MCP 설정에 추가 (예: Claude Code 의 .mcp.json)
+{ "mcpServers": { "foundin": { "command": "npm", "args": ["run", "mcp"], "cwd": "<클론 경로>" } } }
+```
+
+도구 3종: `analyze_announcement(url)` 정독·검증 브리프 (신규 URL 은 4~6분) ·
+`check_eligibility(url, profile)` 조건 대조 (프로필은 로컬 규칙 매칭 전용, **LLM 미전송**) ·
+`today(urls, profile)` 우선순위 브리핑.
+
+알아둘 것:
+
+- LLM 비용은 자신의 키로 나간다. 베타 키가 없다면 `.env` 에 `UPSTAGE_MODEL=solar-pro3` 등
+  일반 콘솔 키로 쓸 수 있는 모델을 지정할 것
+- 도구는 담당자 연락처를 출력에 포함하지 않으며(원칙: 연락처 LLM 비전송), 원문 인용은
+  "지시 아님" 데이터 블록에 격리된다. 단, **당신이 채팅창에 직접 쓴 내용은 당신 에이전트의
+  대화로 전송된다** — 그 경계는 사용자 몫이다
+- 신뢰하지 않는 URL 을 분석시킬 때는 에이전트의 파일·셸 권한을 제한하는 것을 권장한다
+  (외부 문서를 읽는 모든 도구의 공통 주의사항)
+- experimental: 인터페이스가 바뀔 수 있고, 이슈 대응은 베스트 에포트다
+
 ## 프로덕션에서는
 
 foundin.kr 에서 이 에이전트는 세 경로로 실행된다.
