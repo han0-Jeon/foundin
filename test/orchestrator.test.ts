@@ -232,3 +232,30 @@ describe("프리체크 통합 (오케스트레이터)", () => {
     expect(stages[0]).toMatchObject({ is_program: true, tier: "tier1" });
   });
 });
+
+describe("장문 문서 강등 재시도", () => {
+  it("추출이 타임아웃으로 죽으면 입력을 축소해 한 번 더 시도한다", async () => {
+    const runner = mockRunner({
+      extract: (round) => {
+        if (round === 0) throw new Error("Solar API 실패 (3회 시도): network: The operation was aborted due to timeout");
+        return extractionJson(false);
+      },
+    });
+    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub });
+    expect(result.ok).toBe(true);
+    expect(runner.calls.filter((call) => call.startsWith("extract"))).toHaveLength(2);
+  });
+
+  it("축소 재시도까지 실패하면 두 사유를 합쳐 보고한다", async () => {
+    const runner = mockRunner({
+      extract: () => {
+        throw new Error("Solar API 실패 (3회 시도): truncated content (finish_reason=length)");
+      },
+    });
+    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.stage).toBe("extract");
+    expect(result.reason).toContain("입력 축소 재시도도 실패");
+  });
+});

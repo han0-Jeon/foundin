@@ -181,7 +181,28 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
       );
     } catch (error) {
       if (extraction) break; // 재추출 실패면 직전 결과로 진행
-      return { ok: false, stage: "extract", reason: String(error instanceof Error ? error.message : error), tier, source_url: url };
+      const message = String(error instanceof Error ? error.message : error);
+      // 강등 재시도: 초대형 문서는 추론 모델이 시간·토큰 예산 안에 못 끝내는 경우가 있다
+      // (실측: 특정 장문 공고가 300초 × 3회를 재현성 있게 초과). 입력을 절반으로 줄여
+      // 한 번 더 시도한다 — 잘린 만큼은 검증 게이트·"원문 확인 필요" 표기가 안전망.
+      if (/timeout|truncated|length/i.test(message)) {
+        step("extract", "입력 축소 후 재시도 (장문 문서 시간 초과)");
+        try {
+          const trimmed = documents
+            .slice(0, 3)
+            .map((document) => ({ ...document, text: document.text.slice(0, 8_000) }));
+          latest = await completeJson(
+            deps.runner,
+            { system: EXTRACT_SYSTEM, user: extractUser(trimmed, feedback), maxTokens: 6000 },
+            extractionSchema,
+          );
+        } catch (retryError) {
+          const retryMessage = String(retryError instanceof Error ? retryError.message : retryError);
+          return { ok: false, stage: "extract", reason: `${message} (입력 축소 재시도도 실패: ${retryMessage.slice(0, 120)})`, tier, source_url: url };
+        }
+      } else {
+        return { ok: false, stage: "extract", reason: message, tier, source_url: url };
+      }
     }
     extraction = latest;
     step("verify", "인용·날짜·숫자 원문 대조");
