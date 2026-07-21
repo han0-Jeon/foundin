@@ -84,9 +84,12 @@ export function renderMcpBrief(brief: Brief): string {
     for (const { item } of brief.risk_points) lines.push(`- ${item.text}`);
     lines.push("");
   }
-  if (brief.inquiry_questions.length > 0) {
+  // inquiry_questions 는 v1.1(2026-07-19)에 추가된 선택 필드 — 그 이전에 생성돼 캐시/DB 에
+  // 남아있는 브리프에는 없다. 가드 없이 .length 를 읽어 도구 호출 전체가 크래시하던 버그 수정.
+  const inquiries = brief.inquiry_questions ?? [];
+  if (inquiries.length > 0) {
     lines.push("## 기관에 확인할 질문 (AI가 원문에서 확정하지 못한 지점)");
-    brief.inquiry_questions.forEach((q, i) => lines.push(`${i + 1}. [${q.topic}] ${q.question}`));
+    inquiries.forEach((q, i) => lines.push(`${i + 1}. [${q.topic}] ${q.question}`));
     lines.push("");
   }
   if (brief.skipped_attachments.length > 0) {

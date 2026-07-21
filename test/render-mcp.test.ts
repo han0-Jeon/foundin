@@ -89,6 +89,16 @@ describe("renderMcpBrief — 에이전트 컨텍스트 안전 출력", () => {
   it("기관 문의 질문 포함", () => {
     expect(renderMcpBrief(brief())).toContain("[자격 요건] 연령 기준을 확인하세요.");
   });
+
+  // v1.1 이전에 생성돼 캐시·DB 에 남아있는 브리프에는 inquiry_questions 가 없다.
+  // 가드가 없으면 .length 접근에서 터져 MCP 도구 호출 전체가 실패했다 (2026-07-21 실측).
+  it("inquiry_questions 가 없는 구 브리프도 크래시하지 않는다", () => {
+    const legacy = brief();
+    delete (legacy as { inquiry_questions?: unknown }).inquiry_questions;
+    const text = renderMcpBrief(legacy);
+    expect(text).toContain("예비창업 지원사업");
+    expect(text).not.toContain("기관에 확인할 질문");
+  });
 });
 
 describe("renderMcpMatch — 로컬 매칭 결과", () => {
