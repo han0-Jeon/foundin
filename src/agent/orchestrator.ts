@@ -11,6 +11,7 @@ import {
   type Brief,
   type DomainTier,
   type Extraction,
+  type PresetDocument,
   type SourceDocument,
 } from "../types.js";
 import { buildInquiryQuestions } from "../brief/inquiry.js";
@@ -27,6 +28,8 @@ export interface StageAInfo {
 export interface AnalyzeDeps {
   runner: LlmRunner;
   fetchOptions?: GuardedFetchOptions;
+  /** 서버(claim)가 동봉한 사전 수집 문서 — 수집기가 자체 결과에 병합한다 */
+  presetDocuments?: PresetDocument[];
   onStep?: (step: string, detail?: string) => void;
   /** STAGE A 완료(공고 여부 확정) 시 1회 호출 — 워커의 중간 보고 훅 */
   onStageA?: (info: StageAInfo) => void | Promise<void>;
@@ -107,7 +110,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
   let skipped;
   let contact = null;
   try {
-    const result = await collect(url, deps.fetchOptions ?? {});
+    const result = await collect(url, { ...(deps.fetchOptions ?? {}), presetDocuments: deps.presetDocuments });
     documents = result.documents; // 연락처 마스킹된 텍스트 (Solar 전송용)
     rawDocuments = result.rawDocuments; // 마스킹 전 원문 (로컬 프리체크 전용, Solar 미전송)
     skipped = result.skipped;

@@ -132,6 +132,16 @@ export interface SkippedAttachment {
   fileName: string | null;
 }
 
+// 서버(claim)가 동봉하는 사전 수집 문서 — 사이트 program_documents 캐시의 첨부 텍스트.
+// 게시판 HTML 에서 첨부 링크를 못 찾는 소스(중기부 등)의 원문 공백을 메운다.
+export interface PresetDocument {
+  url: string;
+  file_name: string | null;
+  /** 사이트 document_kind: html | pdf | hwpx | hwp | text | unknown */
+  kind: string;
+  text: string;
+}
+
 // 담당자 연락처 — 우리 코드가 원문에서 직접 추출(Solar 미전송), 브리프에 담아 사용자에게만 표시.
 // 전화·이메일만 담는다 (문맥 줄은 공공 게시판 HTML 이 제각각이라 노이즈가 많아 제외 — 실측 확인).
 export interface ContactInfo {

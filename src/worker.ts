@@ -1,7 +1,8 @@
 // hermes(LG노트북) 편집국 워커 — foundin.kr 의 brief_queue 를 폴링해 브리프를 생산한다.
 //
 // API 계약 (foundin.kr 쪽 구현과 동기):
-//   POST {FOUNDIN_BASE_URL}/api/worker/briefs/claim   → 200 {job:{id, source_url, program_id|null}} | 204(잡 없음)
+//   POST {FOUNDIN_BASE_URL}/api/worker/briefs/claim   → 200 {job:{id, source_url, program_id|null, documents?}} | 204(잡 없음)
+//     documents: 서버가 동봉한 사전 수집 문서(사이트 program_documents 캐시) — 선택 필드, 없어도 동작
 //   POST {FOUNDIN_BASE_URL}/api/worker/briefs/stage   → STAGE A(수집·판정) 완료 중간 보고 (best-effort)
 //   POST {FOUNDIN_BASE_URL}/api/worker/briefs/submit  → {job_id, status, brief?, reason?}
 //     status: published(검증 통과) | rejected(공고 아님) | held(검증 게이트 미통과) | failed(수집·추출 실패)
@@ -12,6 +13,7 @@
 import { analyzeUrl, type StageAInfo } from "./agent/orchestrator.js";
 import { loadDotEnv } from "./env.js";
 import { createRunner } from "./llm/runner.js";
+import type { PresetDocument } from "./types.js";
 
 loadDotEnv();
 
@@ -73,6 +75,8 @@ interface Job {
   id: string;
   source_url: string;
   program_id: string | null;
+  /** 서버가 동봉한 사전 수집 문서 (사이트 program_documents 캐시) — 없으면 자체 수집만 */
+  documents?: PresetDocument[];
 }
 
 async function claim(): Promise<Job | null> {
@@ -144,11 +148,13 @@ async function lane(laneId: number): Promise<void> {
       continue;
     }
 
-    log(laneId, `잡 수령 ${job.id}: ${job.source_url}`);
+    const presetCount = job.documents?.length ?? 0;
+    log(laneId, `잡 수령 ${job.id}: ${job.source_url}${presetCount > 0 ? ` (서버 문서 ${presetCount}건 동봉)` : ""}`);
     const started = Date.now();
     try {
       const result = await analyzeUrl(job.source_url, {
         runner,
+        presetDocuments: job.documents,
         onStep: (step) => log(laneId, `  ${job!.id} ${step}`),
         onStageA: (info) => reportStage(laneId, job!.id, info),
       });

@@ -1,4 +1,4 @@
-import type { ContactInfo, SkippedAttachment, SourceDocument } from "../types.js";
+import type { ContactInfo, PresetDocument, SkippedAttachment, SourceDocument } from "../types.js";
 import { decodeText, guardedFetch, type GuardedFetchOptions } from "./fetch.js";
 import { extractContact, hasContact, maskContact } from "./contact.js";
 import { extractTitle, findAttachmentLinks, findInlineImages, htmlToText } from "./html.js";
@@ -19,6 +19,11 @@ const INLINE_OCR_LIMIT = 2;
 export interface CollectOptions extends GuardedFetchOptions {
   /** 이미지 포스터 OCR. 미지정 시 env(FOUNDIN_OCR=docparse) 기준 */
   ocr?: OcrDeps & { enabled?: boolean };
+  /**
+   * 서버(claim)가 동봉한 사전 수집 문서 — 사이트 program_documents 캐시.
+   * 자체 수집이 놓친 첨부를 보충하고, 본문이 얇아도 프리셋이 있으면 수집 실패로 던지지 않는다.
+   */
+  presetDocuments?: PresetDocument[];
 }
 
 function looksLikeImage(contentType: string | null, url: string, bytes: Buffer): boolean {
@@ -79,6 +84,36 @@ export function naverBlogMobileUrl(rawUrl: string): string | null {
 /** 본문이 얇을 때 시도할 형제 주소 (K-Startup ongoing↔deadline, 네이버 블로그 모바일) */
 function siblingUrl(rawUrl: string): string | null {
   return kstartupSiblingUrl(rawUrl) ?? naverBlogMobileUrl(rawUrl);
+}
+
+/** 사이트 document_kind → 워커 kind. 컨테이너를 모르는 값은 text 로 취급한다. */
+function presetKind(kind: string): SourceDocument["kind"] {
+  switch (kind) {
+    case "html":
+    case "pdf":
+    case "hwp":
+    case "hwpx":
+    case "text":
+      return kind;
+    default:
+      return "text";
+  }
+}
+
+/**
+ * 프리셋(서버 동봉 문서)을 자체 수집 결과에 병합 — URL 중복은 자체 수집을 우선한다.
+ * 프리셋도 redactDocuments 를 거치므로 연락처 마스킹은 동일하게 적용된다.
+ */
+function mergePresetDocuments(documents: SourceDocument[], presets: PresetDocument[] | undefined): void {
+  if (!presets?.length) return;
+  const seen = new Set(documents.map((document) => document.url));
+  for (const preset of presets) {
+    if (!preset.url || seen.has(preset.url)) continue;
+    const text = preset.text?.trim() ?? "";
+    if (text.length < MIN_ATTACHMENT_TEXT) continue;
+    documents.push({ url: preset.url, kind: presetKind(preset.kind), title: preset.file_name, text });
+    seen.add(preset.url);
+  }
 }
 
 /** 원문에서 연락처를 뽑고(표시용), 문서 텍스트는 마스킹(Solar 전송용)해서 돌려준다. */
@@ -160,7 +195,18 @@ export async function collectDocuments(url: string, options: CollectOptions = {}
     ? { ...options.ocr, enabled: true, fetchImpl: options.ocr?.fetchImpl ?? options.fetchImpl }
     : { ...options.ocr, enabled: false };
 
-  let main = await guardedFetch(url, options);
+  let main;
+  try {
+    main = await guardedFetch(url, options);
+  } catch (error) {
+    // 원문 페이지 fetch 실패 — 프리셋(서버 캐시)이 있으면 그것만으로 진행한다.
+    const presetOnly: SourceDocument[] = [];
+    mergePresetDocuments(presetOnly, options.presetDocuments);
+    if (presetOnly.length === 0) throw error;
+    skipped.push({ url, kind: "원문 페이지 수집 실패 — 서버 캐시 문서로 진행", fileName: null });
+    const presetResult = redactDocuments(presetOnly);
+    return { documents: presetResult.masked, rawDocuments: presetResult.raw, skipped, contact: presetResult.contact };
+  }
 
   // 메인 URL 이 문서 파일(또는 OCR 켠 경우 이미지) 직링크인 경우
   if (
@@ -173,6 +219,7 @@ export async function collectDocuments(url: string, options: CollectOptions = {}
       throw new Error(`${extracted.kind.toUpperCase()} 에서 텍스트를 추출하지 못했습니다 (스캔본 가능성)`);
     }
     documents.push({ url: main.finalUrl, kind: extracted.kind, title: main.fileName, text: extracted.text });
+    mergePresetDocuments(documents, options.presetDocuments);
     const single = redactDocuments(documents);
     return { documents: single.masked, rawDocuments: single.raw, skipped, contact: single.contact };
   }
@@ -202,10 +249,10 @@ export async function collectDocuments(url: string, options: CollectOptions = {}
 
   if (pageText.length >= MIN_PAGE_TEXT) {
     documents.push({ url: main.finalUrl, kind: "html", title: extractTitle(html), text: pageText });
-  } else if (!ocrOn) {
+  } else if (!ocrOn && !options.presetDocuments?.length) {
     throw new Error("페이지에서 본문 텍스트를 찾지 못했습니다 (JS 렌더링 페이지 가능성)");
   }
-  // (OCR 켠 경우엔 본문이 빈약해도 계속 — 아래에서 첨부·인라인 포스터로 본문을 구한다)
+  // (OCR 또는 프리셋이 있으면 본문이 빈약해도 계속 — 첨부·프리셋·포스터로 본문을 구한다)
 
   let fetched = 0;
   for (const link of findAttachmentLinks(html, main.finalUrl)) {
@@ -234,6 +281,10 @@ export async function collectDocuments(url: string, options: CollectOptions = {}
       });
     }
   }
+
+  // 프리셋 병합 — 자체 첨부 수집이 놓친 문서를 서버 캐시로 보충한다 (URL 중복은 자체 우선).
+  // OCR 임계 판정 전에 병합해, 프리셋으로 본문이 충분하면 불필요한 OCR 을 건너뛴다.
+  mergePresetDocuments(documents, options.presetDocuments);
 
   // 인라인 포스터 OCR (옵트인): 본문+첨부 합산 텍스트가 얇으면 "포스터가 본문"인 공고 —
   // 본문 <img> 후보를 내려받아 OCR 로 본문을 구한다 (지자체·대학 카드뉴스형 공고 대응).

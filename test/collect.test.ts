@@ -102,3 +102,81 @@ describe("네이버 블로그 모바일 폴백", () => {
     expect(naverBlogMobileUrl("https://example.go.kr/notice")).toBeNull();
   });
 });
+
+describe("프리셋 문서 병합 (서버 동봉 program_documents 캐시)", () => {
+  const noticeUrl = "https://www.mss.go.kr/site/smba/ex/bbs/View.do?cbIdx=86&bcIdx=1064370";
+  // 중기부형 "두 줄 요약" 본문 — MIN_PAGE_TEXT(80자)는 넘지만 자격·마감 정보는 없다.
+  const thinBody =
+    "<html><body>2026년 소상공인 성장지원사업 참여기업 모집 공고입니다. 자세한 지원대상과 신청 방법은 첨부된 공고문 파일을 반드시 참조하시기 바랍니다. 기타 문의사항은 담당 부서로 연락 바랍니다.</body></html>";
+  const presets = [
+    {
+      url: "https://www.mss.go.kr/file/dn.do?fileId=1",
+      file_name: "공고문.hwpx",
+      kind: "hwpx",
+      text: "지원대상: 창업 7년 이내 소상공인. 신청기간: 2026. 8. 1. ~ 2026. 8. 14. 제출서류: 사업계획서 1부. ".repeat(5),
+    },
+  ];
+  const htmlFetch = (async () =>
+    new Response(thinBody, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } })) as typeof fetch;
+
+  it("본문(2줄 요약)에 프리셋 첨부 텍스트를 병합한다", async () => {
+    const result = await collectDocuments(noticeUrl, { fetchImpl: htmlFetch, skipGuard: true, presetDocuments: presets });
+    expect(result.documents).toHaveLength(2);
+    expect(result.documents[0]!.kind).toBe("html");
+    expect(result.documents[1]!.kind).toBe("hwpx");
+    expect(result.documents[1]!.title).toBe("공고문.hwpx");
+    expect(result.documents[1]!.text).toContain("신청기간: 2026. 8. 1.");
+  });
+
+  it("자체 수집과 URL 이 겹치는 프리셋·빈 텍스트 프리셋은 버린다", async () => {
+    const result = await collectDocuments(noticeUrl, {
+      fetchImpl: htmlFetch,
+      skipGuard: true,
+      presetDocuments: [
+        ...presets,
+        { url: presets[0]!.url, file_name: "중복.hwpx", kind: "hwpx", text: "중복이지만 다른 텍스트입니다. 충분히 긴 텍스트를 넣어 둡니다." },
+        { url: "https://www.mss.go.kr/file/dn.do?fileId=2", file_name: "빈파일.pdf", kind: "pdf", text: "짧음" },
+      ],
+    });
+    expect(result.documents).toHaveLength(2);
+    expect(result.documents[1]!.title).toBe("공고문.hwpx");
+  });
+
+  it("본문 텍스트가 임계 미만이어도 프리셋이 있으면 던지지 않는다", async () => {
+    const shellFetch = (async () =>
+      new Response("<html><body>로딩중</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      })) as typeof fetch;
+    const result = await collectDocuments(noticeUrl, { fetchImpl: shellFetch, skipGuard: true, presetDocuments: presets });
+    expect(result.documents).toHaveLength(1);
+    expect(result.documents[0]!.kind).toBe("hwpx");
+  });
+
+  it("원문 페이지 fetch 실패 시 프리셋만으로 진행하고 skipped 로 보고한다", async () => {
+    const failFetch = (async () => {
+      throw new Error("connect ECONNREFUSED");
+    }) as typeof fetch;
+    const result = await collectDocuments(noticeUrl, { fetchImpl: failFetch, skipGuard: true, presetDocuments: presets });
+    expect(result.documents).toHaveLength(1);
+    expect(result.documents[0]!.kind).toBe("hwpx");
+    expect(result.skipped.some((s) => s.kind.includes("서버 캐시"))).toBe(true);
+  });
+
+  it("프리셋 텍스트에도 연락처 마스킹이 적용된다", async () => {
+    const withContact = [
+      {
+        url: "https://www.mss.go.kr/file/dn.do?fileId=3",
+        file_name: "공고문.hwpx",
+        kind: "hwpx",
+        text: "지원대상: 소상공인. 신청기간: 2026. 8. 1. ~ 8. 14. 문의: 044-123-4567, help@mss.go.kr 로 연락 바랍니다.",
+      },
+    ];
+    const result = await collectDocuments(noticeUrl, { fetchImpl: htmlFetch, skipGuard: true, presetDocuments: withContact });
+    const preset = result.documents.find((d) => d.kind === "hwpx")!;
+    expect(preset.text).not.toContain("044-123-4567");
+    expect(preset.text).not.toContain("help@mss.go.kr");
+    expect(result.contact?.phones).toContain("044-123-4567");
+    expect(result.contact?.emails).toContain("help@mss.go.kr");
+  });
+});
