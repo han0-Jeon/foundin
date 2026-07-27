@@ -31,8 +31,6 @@ tmp/
 .cache/
 out/
 urls.txt
-eval-urls.txt
-eval/calibration-report.md
 eval/batch-report.md
 
 # os / editor
