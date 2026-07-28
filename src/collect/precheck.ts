@@ -44,6 +44,7 @@ export const PUBLIC_WHITELIST = [
   "kocca.kr", // 한국콘텐츠진흥원
   "kosmes.or.kr", // 중소벤처기업진흥공단
   "semas.or.kr", // 소상공인시장진흥공단
+  "sbiz24.kr", // 소상공인24 (2026-07-28 추가 — 웹앱 lib/briefs/tier.ts 와 동기)
 ] as const;
 
 const NEW_DOMAIN_DAYS = 90;
