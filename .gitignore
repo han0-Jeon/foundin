@@ -38,3 +38,6 @@ eval/batch-report.md
 Thumbs.db
 .vscode/
 .idea/
+
+# Claude Code 프로젝트 메모리 (로컬 전용)
+CLAUDE.md
