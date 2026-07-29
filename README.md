@@ -61,8 +61,7 @@ Node 20 이상이면 됩니다.
 ```powershell
 npm install
 Copy-Item .env.example .env        # UPSTAGE_API_KEY 입력
-
-npm run analyze -- "https://www.k-startup.go.kr/...(공고 URL)"
+npm run demo
 ```
 
 **macOS · Linux (bash)**
@@ -70,9 +69,11 @@ npm run analyze -- "https://www.k-startup.go.kr/...(공고 URL)"
 ```bash
 npm install
 cp .env.example .env               # UPSTAGE_API_KEY 입력
-
-npm run analyze -- "https://www.k-startup.go.kr/...(공고 URL)"
+npm run demo
 ```
+
+`npm run demo` 는 동봉한 실제 공고를 정독해 브리프를 만듭니다. URL 을 찾아 붙여넣지 않으셔도
+됩니다. 마감돼 내려간 공고면 다음 것으로 알아서 넘어갑니다.
 
 돌리면 단계별 진행이 이렇게 보입니다. 공고에 따라 추출이 수 분 걸려서, 어디까지 갔고 얼마나
 지났는지 보이게 해뒀습니다.
@@ -96,10 +97,12 @@ npm run analyze -- "https://www.k-startup.go.kr/...(공고 URL)"
 > Git Bash(mintty) 를 쓰시면 Node 가 터미널을 못 알아보는 경우가 있습니다. 위 화면 대신 한 줄씩
 > 로그만 나오면 `--progress` 를 붙이세요.
 
-내 조건과 대조까지 하려면 프로필을 붙입니다. 이 JSON 은 로컬에서만 쓰입니다.
+보고 싶은 공고를 직접 넣으시려면 이렇게 씁니다. 내 조건과 대조까지 하려면 프로필을 붙이세요.
+이 JSON 은 로컬에서만 쓰입니다.
 
 ```bash
-npm run analyze -- "https://...(공고 URL)" --profile examples/profile.pre-seoul.json
+npm run analyze -- "<공고 URL>"
+npm run analyze -- "<공고 URL>" --profile examples/profile.pre-seoul.json
 ```
 
 URL 여러 개를 던져서 "오늘 확인할 공고"로 정리하는 모드도 있습니다.

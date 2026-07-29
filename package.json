@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "demo": "tsx src/cli.ts demo",
     "analyze": "tsx src/cli.ts analyze",
     "today": "tsx src/cli.ts today",
     "worker": "tsx src/worker.ts",

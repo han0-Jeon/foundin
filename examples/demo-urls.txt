@@ -1,0 +1,9 @@
+# npm run demo 가 쓰는 공고 URL 목록.
+#
+# 위에서부터 시도해 처음으로 수집에 성공한 공고를 분석한다. 정부 공고는 마감되면
+# 상세 페이지가 내려가거나 빈 셸로 바뀌므로, 하나가 죽어도 데모가 멈추지 않게 여러 개를 둔다.
+# 한 줄에 하나. # 로 시작하면 주석.
+
+https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn=178700
+https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn=178668
+https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn=178644

@@ -197,15 +197,59 @@ async function commandToday(flags: Flags): Promise<number> {
   return 0;
 }
 
+/**
+ * 인자 없이 도는 데모. 처음 보는 사람이 URL 을 찾아 붙여넣지 않아도 되게,
+ * 동봉한 실제 공고를 위에서부터 시도해 처음 수집에 성공한 것으로 브리프를 만든다.
+ * (정부 공고는 마감되면 상세가 내려가므로 목록으로 둔다 — examples/demo-urls.txt)
+ */
+async function commandDemo(flags: Flags): Promise<number> {
+  const listFile = flags.urls ?? join("examples", "demo-urls.txt");
+  const urls = (await readFile(listFile, "utf8"))
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+
+  log("foundin 데모 — 실제 공고 하나를 정독해 판단 브리프를 만듭니다.");
+  log("API 키 없이 검증 로직만 보시려면: npm test\n");
+
+  const demoFlags: Flags = {
+    ...flags,
+    profile: flags.profile ?? join("examples", "profile.pre-seoul.json"),
+    forceProgress: !flags.noProgress, // 데모는 진행 표시가 핵심이라 켜둔다
+  };
+
+  for (const [index, url] of urls.entries()) {
+    log(`공고 ${index + 1}/${urls.length}: ${url}`);
+    const result = await runAnalysis(url, demoFlags);
+    if (result.ok) {
+      const profile = await loadProfile(demoFlags.profile!);
+      const match = { profile, result: matchProfile(result.brief, profile) };
+      process.stdout.write(`${renderTerminal(result.brief, match)}\n`);
+      const saved = await saveBrief(result.brief, demoFlags.out, renderMarkdown(result.brief, match));
+      log(`\n저장됨: ${saved}`);
+      return 0;
+    }
+    log(`  ✗ ${describeFailure(result)}`);
+    if (index < urls.length - 1) log("  다음 공고로 넘어갑니다 (마감돼 내려간 공고일 수 있습니다).\n");
+  }
+
+  log("\n동봉한 공고가 전부 마감된 것 같습니다. 보고 싶은 공고 URL 을 직접 주세요:");
+  log("  npm run analyze -- \"<공고 URL>\"");
+  return 3;
+}
+
 const { command, flags } = parseArgs(process.argv.slice(2));
 const exitCode = await (command === "analyze"
   ? commandAnalyze(flags)
-  : command === "today"
-    ? commandToday(flags)
-    : (async () => {
-        log("foundin — 정부지원사업 판단 브리프 에이전트");
-        log("  npm run analyze -- <공고 URL> [--profile p.json] [--json] [--no-cache] [--runner solar|claude-code|codex]");
-        log("  npm run today   -- --profile p.json [--urls urls.txt] [--top 5]");
-        return 1;
-      })());
+  : command === "demo"
+    ? commandDemo(flags)
+    : command === "today"
+      ? commandToday(flags)
+      : (async () => {
+          log("foundin — 정부지원사업 판단 브리프 에이전트");
+          log("  npm run demo                    동봉한 실제 공고로 한 번 돌려보기 (인자 없음)");
+          log("  npm run analyze -- <공고 URL>   [--profile p.json] [--json] [--no-cache] [--progress|--no-progress]");
+          log("  npm run today   -- --profile p.json [--urls urls.txt] [--top 5]");
+          return 1;
+        })());
 process.exit(exitCode);
