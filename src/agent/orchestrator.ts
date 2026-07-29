@@ -53,12 +53,13 @@ function stripToJson(raw: string): string {
 
 async function completeJson<T>(
   runner: LlmRunner,
-  request: { system: string; user: string; maxTokens?: number },
+  request: { system: string; user: string; maxTokens?: number; onActivity?: (message: string) => void },
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   retries = 2,
 ): Promise<T> {
   let user = request.user;
   let lastError = "";
+  const report = request.onActivity ?? (() => {});
   for (let attempt = 0; attempt <= retries; attempt++) {
     const raw = await runner.complete({
       system: request.system,
@@ -66,6 +67,7 @@ async function completeJson<T>(
       json: true,
       maxTokens: request.maxTokens,
       temperature: 0.1,
+      onActivity: request.onActivity,
     });
     try {
       const parsed = schema.safeParse(JSON.parse(stripToJson(raw)));
@@ -77,6 +79,7 @@ async function completeJson<T>(
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
+    report(`응답이 형식에 안 맞아 다시 요청 (${attempt + 1}/${retries + 1})`);
     user = `${request.user}\n\n[파싱 실패 재시도] 이전 응답이 유효하지 않았다: ${lastError}\n규칙에 맞는 JSON 하나만 다시 출력하라.`;
   }
   throw new Error(`JSON 응답 파싱 실패: ${lastError}`);
@@ -144,7 +147,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     try {
       classification = await completeJson(
         deps.runner,
-        { system: CLASSIFY_SYSTEM, user: classifyUser(documents), maxTokens: 800 },
+        { system: CLASSIFY_SYSTEM, user: classifyUser(documents), maxTokens: 800, onActivity: (m) => step("classify", m) },
         classificationSchema,
       );
     } catch (error) {
@@ -179,7 +182,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     try {
       latest = await completeJson(
         deps.runner,
-        { system: EXTRACT_SYSTEM, user: extractUser(documents, feedback), maxTokens: 6000 },
+        { system: EXTRACT_SYSTEM, user: extractUser(documents, feedback), maxTokens: 6000, onActivity: (m) => step("extract", m) },
         extractionSchema,
       );
     } catch (error) {
@@ -196,7 +199,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
             .map((document) => ({ ...document, text: document.text.slice(0, 8_000) }));
           latest = await completeJson(
             deps.runner,
-            { system: EXTRACT_SYSTEM, user: extractUser(trimmed, feedback), maxTokens: 6000 },
+            { system: EXTRACT_SYSTEM, user: extractUser(trimmed, feedback), maxTokens: 6000, onActivity: (m) => step("extract", m) },
             extractionSchema,
           );
         } catch (retryError) {

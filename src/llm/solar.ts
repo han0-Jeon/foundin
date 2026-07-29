@@ -39,6 +39,9 @@ export class SolarRunner implements LlmRunner {
     if (req.system) messages.push({ role: "system", content: req.system });
     messages.push({ role: "user", content: req.user });
 
+    const report = req.onActivity ?? (() => {});
+    const inputChars = (req.system?.length ?? 0) + req.user.length;
+
     let lastError = "";
     let reasoningBuffer = REASONING_BUFFER_BASE;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -51,6 +54,12 @@ export class SolarRunner implements LlmRunner {
       if (req.json && this.supportsResponseFormat) {
         body.response_format = { type: "json_object" };
       }
+
+      report(
+        attempt === 1
+          ? `${this.name} 응답 대기 — 원문 ${inputChars.toLocaleString()}자 전송`
+          : `${this.name} 응답 대기 (${attempt}/${MAX_ATTEMPTS}회차)`,
+      );
 
       let response: Response;
       try {
@@ -65,6 +74,7 @@ export class SolarRunner implements LlmRunner {
         });
       } catch (error) {
         lastError = `network: ${error instanceof Error ? error.message : String(error)}`;
+        report(`응답 없음 — 잠시 후 재시도 (${attempt}/${MAX_ATTEMPTS})`);
         await backoff(attempt);
         continue;
       }
@@ -78,12 +88,20 @@ export class SolarRunner implements LlmRunner {
         // finish_reason=length 면 content 가 있어도 잘린 JSON — 파서로 넘기지 않고 버퍼 증량 재시도.
         // (100건 실측: 잘린 JSON 이 파싱 단계까지 흘러가 "JSON 파싱 실패"로 죽던 케이스)
         const truncated = choice?.finish_reason === "length";
-        if (typeof content === "string" && content.trim() && !truncated) return content;
+        if (typeof content === "string" && content.trim() && !truncated) {
+          report(`응답 수신 ${content.length.toLocaleString()}자 — 구조 파싱`);
+          return content;
+        }
         lastError = truncated
           ? "truncated content (finish_reason=length)"
           : `empty content (finish_reason=${choice?.finish_reason ?? "?"})`;
         // 추론이 예산을 다 먹은 경우 — 버퍼를 키워 즉시 재시도 (백오프 불필요)
         reasoningBuffer = Math.min(reasoningBuffer * 2, REASONING_BUFFER_MAX);
+        report(
+          truncated
+            ? `응답이 잘려서 토큰 예산 ${reasoningBuffer.toLocaleString()} 로 늘려 재시도`
+            : `추론이 예산을 다 써 빈 응답 — 버퍼 ${reasoningBuffer.toLocaleString()} 로 재시도`,
+        );
         continue;
       }
 
@@ -96,6 +114,11 @@ export class SolarRunner implements LlmRunner {
       }
       if (response.status === 429 || response.status >= 500) {
         lastError = `HTTP ${response.status}: ${errorText}`;
+        report(
+          response.status === 429
+            ? `요청 한도 초과 — 백오프 후 재시도 (${attempt}/${MAX_ATTEMPTS})`
+            : `서버 오류 ${response.status} — 백오프 후 재시도 (${attempt}/${MAX_ATTEMPTS})`,
+        );
         await backoff(attempt);
         continue;
       }

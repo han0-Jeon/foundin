@@ -259,3 +259,40 @@ describe("장문 문서 강등 재시도", () => {
     expect(result.reason).toContain("입력 축소 재시도도 실패");
   });
 });
+
+describe("진행 보고 — 러너가 흘리는 실제 상태가 화면까지 간다", () => {
+  /** 러너가 호출 중 상태를 보고하는 상황을 흉내낸다 (Solar 의 응답 대기·재시도 보고). */
+  function reportingRunner(): LlmRunner {
+    let extractRound = -1;
+    return {
+      name: "mock-solar",
+      async complete({ system, onActivity }): Promise<string> {
+        if (system?.includes("감별")) return classifyOk;
+        if (system?.includes("구조화")) {
+          extractRound++;
+          onActivity?.("mock-solar 응답 대기 — 원문 1,234자 전송");
+          onActivity?.("응답 수신 900자 — 구조 파싱");
+          return extractionJson(false);
+        }
+        return adviceOk;
+      },
+    };
+  }
+
+  it("추출 중 보고가 extract 단계의 detail 로 전달된다", async () => {
+    const seen: { step: string; detail?: string }[] = [];
+    await analyzeUrl(NOTICE_URL, {
+      runner: reportingRunner(),
+      collectImpl: collectStub,
+      onStep: (step, detail) => seen.push({ step, detail }),
+    });
+    const extractDetails = seen.filter((s) => s.step === "extract").map((s) => s.detail);
+    expect(extractDetails).toContain("mock-solar 응답 대기 — 원문 1,234자 전송");
+    expect(extractDetails).toContain("응답 수신 900자 — 구조 파싱");
+  });
+
+  it("보고를 안 하는 러너여도 파이프라인은 그대로 돈다", async () => {
+    const result = await analyzeUrl(NOTICE_URL, { runner: mockRunner(), collectImpl: collectStub });
+    expect(result.ok).toBe(true);
+  });
+});

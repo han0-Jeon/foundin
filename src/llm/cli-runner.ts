@@ -33,6 +33,8 @@ export class CliRunner implements LlmRunner {
       .filter(Boolean)
       .join("\n\n");
 
+    req.onActivity?.(`${this.name} 응답 대기 — 원문 ${prompt.length.toLocaleString()}자 전달`);
+
     return new Promise<string>((resolve, reject) => {
       const child = spawn(this.bin, this.args, {
         stdio: ["pipe", "pipe", "pipe"],

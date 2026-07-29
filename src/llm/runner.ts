@@ -9,6 +9,14 @@ export interface CompleteRequest {
   json?: boolean;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * 호출 중 상태 보고 (선택). CLI 진행 표시가 이걸 받아 "지금 뭘 하는 중인지" 를 띄운다.
+   *
+   * 추출 한 번이 몇 분씩 걸리는데 그동안 화면에 아무 변화가 없으면 멈춘 걸로 보인다.
+   * 여기서 흘리는 건 전부 실제 상태다 — 응답 대기, 잘린 응답 재시도, 추론 예산 증량,
+   * 혼잡 백오프. 진행률처럼 보이는 값을 지어내지 않는다.
+   */
+  onActivity?: (message: string) => void;
 }
 
 export interface LlmRunner {
