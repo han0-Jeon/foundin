@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractSourceUrl,
+  isDemoFriendly,
   pickNonAnnouncement,
   extractTitle,
   parseSitemap,
@@ -127,5 +128,26 @@ describe("shuffle", () => {
     const a = shuffle([1, 2, 3, 4, 5], () => 0.42);
     const b = shuffle([1, 2, 3, 4, 5], () => 0.42);
     expect(a).toEqual(b);
+  });
+});
+
+describe("데모 후보 소스 제한", () => {
+  // 온통청년 원본 페이지는 공고문이 아니라 정책 DB 항목이라 신청 자격이 서술로 없다.
+  // foundin.kr 은 웹앱이 API 필드로 원문을 합성해 브리프를 만들지만 CLI 엔 그 단계가 없어서,
+  // 데모로 뽑히면 8분 기다린 끝에 보류로 끝난다 (실측).
+  // 프로덕션 근거: '자격 요건 미추출' 보류 41건 중 youth_policy 31건.
+  it("온통청년·sbiz24 는 후보에서 제외된다", () => {
+    expect(isDemoFriendly("https://www.youthcenter.go.kr/youthPolicy/x/ythPlcyDetail/2026")).toBe(false);
+    expect(isDemoFriendly("https://www.sbiz24.kr/#/pbanc/detail?pbancSn=1")).toBe(false);
+  });
+
+  it("K-Startup·중기부·기업마당은 후보가 된다", () => {
+    expect(isDemoFriendly("https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn=1")).toBe(true);
+    expect(isDemoFriendly("https://www.mss.go.kr/site/smba/ex/bbs/View.do?cbIdx=310&bcIdx=1")).toBe(true);
+    expect(isDemoFriendly("https://www.bizinfo.go.kr/web/lay1/bbs/x.do")).toBe(true);
+  });
+
+  it("깨진 URL 은 후보가 아니다", () => {
+    expect(isDemoFriendly("not a url")).toBe(false);
   });
 });

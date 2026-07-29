@@ -11,6 +11,30 @@
 const SITEMAP_URL = "https://foundin.kr/sitemap.xml";
 const FETCH_TIMEOUT_MS = 10_000;
 
+/**
+ * 데모 후보로 쓸 소스 호스트.
+ *
+ * 온통청년(youthcenter.go.kr)을 뺀 이유: 그 페이지는 공고문이 아니라 청년정책 DB 항목이라
+ * 신청 자격이 서술 구조로 안 적혀 있다. foundin.kr 이 이 소스로 브리프를 만들 때는 웹앱이
+ * API 필드로 원문을 합성해 넣는데, CLI 로 원본 URL 을 직접 분석하면 그 합성 단계가 없다.
+ * 같은 작업이 아니라서 데모로 쓰면 8분 기다린 끝에 보류로 끝난다 (실측).
+ *
+ * 프로덕션 근거 (2026-07-29): '자격 요건을 하나도 추출하지 못함' 보류 41건 중
+ * youth_policy 가 31건. kstartup 2 · mss 5 · sbiz24 3.
+ *
+ * sbiz24 는 해시 라우트 SPA 라 원본 URL 수집이 불안정해 함께 제외한다.
+ */
+const DEMO_SOURCE_HOSTS = ["k-startup.go.kr", "mss.go.kr", "bizinfo.go.kr"];
+
+export function isDemoFriendly(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return DEMO_SOURCE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
 export interface Candidate {
   /** 공고 제목 */
   title: string;
@@ -150,13 +174,14 @@ export async function fetchCandidates(count: number, rng: () => number = Math.ra
   if (pages.length === 0) return [];
 
   const picked: Candidate[] = [];
-  // 상세 몇 건은 원문 링크 추출에 실패할 수 있으므로 여유 있게 시도한다.
-  for (const page of pages.slice(0, count * 3)) {
+  // 원문 링크 추출 실패 + 소스 필터(DEMO_SOURCE_HOSTS)로 걸러지는 건이 있어 여유 있게 시도한다.
+  for (const page of pages.slice(0, count * 12)) {
     if (picked.length >= count) break;
     const html = await getText(page);
     if (!html) continue;
     const url = extractSourceUrl(html);
     if (!url) continue;
+    if (!isDemoFriendly(url)) continue;
     if (picked.some((c) => c.url === url)) continue;
     picked.push({
       title: extractTitle(html, page),
