@@ -18,6 +18,7 @@ interface Flags {
   json: boolean;
   noCache: boolean;
   noProgress: boolean;
+  forceProgress: boolean;
   runner?: string;
   profile?: string;
   urls?: string;
@@ -26,13 +27,14 @@ interface Flags {
 }
 
 function parseArgs(argv: string[]): { command: string; flags: Flags } {
-  const flags: Flags = { positional: [], json: false, noCache: false, noProgress: false, top: 5, out: "out" };
+  const flags: Flags = { positional: [], json: false, noCache: false, noProgress: false, forceProgress: false, top: 5, out: "out" };
   const command = argv[0] ?? "help";
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--json") flags.json = true;
     else if (arg === "--no-cache") flags.noCache = true;
     else if (arg === "--no-progress") flags.noProgress = true;
+    else if (arg === "--progress") flags.forceProgress = true;
     else if (arg === "--runner") flags.runner = argv[++i];
     else if (arg === "--profile") flags.profile = argv[++i];
     else if (arg === "--urls") flags.urls = argv[++i];
@@ -61,7 +63,7 @@ async function runAnalysis(url: string, flags: Flags): Promise<AnalysisResult> {
       return cached;
     }
   }
-  const progress = createProgress({ plain: flags.noProgress });
+  const progress = createProgress({ plain: flags.noProgress, force: flags.forceProgress });
   let result: AnalysisResult;
   try {
     result = await analyzeUrl(url, { runner, onStep: (step, detail) => progress.step(step, detail) });
@@ -103,7 +105,7 @@ function dday(iso: string | null): string {
 async function commandAnalyze(flags: Flags): Promise<number> {
   const url = flags.positional[0];
   if (!url) {
-    log("사용법: npm run analyze -- <공고 URL> [--profile examples/profile.pre-seoul.json] [--json] [--no-cache] [--no-progress]");
+    log("사용법: npm run analyze -- <공고 URL> [--profile examples/profile.pre-seoul.json] [--json] [--no-cache] [--progress|--no-progress]");
     return 1;
   }
   log(`공고 분석 시작: ${url}`);

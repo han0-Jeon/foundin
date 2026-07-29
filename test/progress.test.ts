@@ -167,6 +167,16 @@ describe("shouldAnimate — 비TTY 에서는 애니메이션 금지", () => {
     expect(shouldAnimate(stream, true)).toBe(false);
   });
 
+  it("force 면 감지를 무시하고 켠다 (--progress / Git Bash 대응)", () => {
+    const { stream } = fakeStream(false);
+    expect(shouldAnimate(stream, false, true)).toBe(true);
+  });
+
+  it("--no-progress 가 --progress 보다 우선한다", () => {
+    const { stream } = fakeStream(false);
+    expect(shouldAnimate(stream, true, true)).toBe(false);
+  });
+
   it("CI 환경변수가 있으면 끈다", () => {
     const { stream } = fakeStream(true);
     const original = process.env.CI;

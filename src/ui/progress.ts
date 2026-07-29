@@ -10,6 +10,8 @@
 //   - 전부 stderr 로 나간다. stdout 은 브리프 본문(--json 포함) 전용이라 오염시키지 않는다.
 //   - 외부 의존성 없음. 스피너·커서 제어는 ANSI 이스케이프 직접 사용.
 
+import { fstatSync } from "node:fs";
+
 /** 파이프라인 표준 순서. orchestrator.ts 의 step() 호출과 맞춰야 한다. */
 const STEPS: { key: string; label: string }[] = [
   { key: "collect", label: "수집" },
@@ -55,6 +57,8 @@ export interface ProgressOptions {
   stream?: NodeJS.WriteStream;
   /** 강제로 평문 모드 (--no-progress) */
   plain?: boolean;
+  /** 감지를 무시하고 강제로 애니메이션 (--progress) */
+  force?: boolean;
   /** 테스트용 시계 주입 */
   now?: () => number;
 }
@@ -215,20 +219,45 @@ function useColor(stream: NodeJS.WriteStream): boolean {
 }
 
 /**
+ * Git Bash(mintty) 감지.
+ *
+ * Windows 의 mintty 는 콘솔이 아니라 pty 를 파이프로 흉내내기 때문에 Node 가
+ * isTTY 를 false(정확히는 undefined)로 본다. 그대로 두면 Git Bash 사용자는
+ * 애니메이션을 영영 못 본다.
+ *
+ * 파일 리다이렉트와는 구분할 수 있다 — mintty 창은 fd 가 FIFO(파이프)이고,
+ * `> log.txt` 로 돌리면 FILE 이다. FIFO 일 때만 켜서 로그 파일 오염을 막는다.
+ * (`| cat` 같은 진짜 파이프도 FIFO 라 여기 걸리지만, 흔치 않고 피해도 작다.)
+ */
+function isMinttyTerminal(stream: NodeJS.WriteStream): boolean {
+  if (process.platform !== "win32") return false;
+  if (!process.env.MSYSTEM && !process.env.TERM?.startsWith("xterm")) return false;
+  try {
+    // WriteStream 타입에는 fd 가 없지만 process.stderr 는 실제로 갖고 있다.
+    const maybeFd = (stream as unknown as { fd?: number }).fd;
+    return fstatSync(typeof maybeFd === "number" ? maybeFd : 2).isFIFO();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 애니메이션을 켤지 판단한다.
  * TTY 가 아니거나 CI 환경이면 끈다 — 제어문자가 로그 파일에 섞이는 걸 막는다.
  */
-export function shouldAnimate(stream: NodeJS.WriteStream, plain?: boolean): boolean {
+export function shouldAnimate(stream: NodeJS.WriteStream, plain?: boolean, force?: boolean): boolean {
   if (plain) return false;
-  if (process.env.CI) return false;
   if (process.env.FOUNDIN_NO_PROGRESS) return false;
-  return Boolean(stream.isTTY);
+  if (force || process.env.FOUNDIN_PROGRESS) return true; // 감지 실패 시 강제 on
+  if (process.env.CI) return false;
+  if (stream.isTTY) return true;
+  return isMinttyTerminal(stream);
 }
 
 export function createProgress(options: ProgressOptions = {}): ProgressReporter {
   const stream = options.stream ?? process.stderr;
   const now = options.now ?? Date.now;
-  const animate = shouldAnimate(stream, options.plain);
+  const animate = shouldAnimate(stream, options.plain, options.force);
   const startedAt = now();
 
   if (!animate) {
