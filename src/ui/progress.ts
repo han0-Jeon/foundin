@@ -394,12 +394,7 @@ export function createProgress(options: ProgressOptions = {}): ProgressReporter 
     // 하단은 센 값만 적는다. 남은 시간은 모르므로 모른다고 쓴다 — 진행률 막대를 두지 않는 이유다.
     const total = formatElapsed(now() - startedAt);
     lines.push("");
-    lines.push(
-      paint(
-        ANSI.dim,
-        `    ${tracker.completedCount}/${STEPS.length} 단계 완료 · 경과 ${total} · 남은 시간은 알 수 없습니다`,
-      ),
-    );
+    lines.push(paint(ANSI.dim, `    ${tracker.completedCount}/${STEPS.length} 단계 완료 · 경과 ${total}`));
 
     const out = `${ANSI.up(drawnLines)}${ANSI.clearBelow}${lines.join("\n")}\n`;
     stream.write(out);

@@ -3,6 +3,7 @@ import {
   announcementScore,
   classifyDomain,
   levenshtein,
+  looksLikeIndexPage,
   precheck,
   registrableDomain,
   scanRiskSignals,
@@ -188,5 +189,50 @@ describe("precheck() Tier2 도메인 나이 검사", () => {
     };
     const result = await precheck("https://greenbiz-lab.or.kr/apply", doc(NOTICE_TEXT), deps);
     expect(result.verdict).toBe("needs_llm");
+  });
+});
+
+describe("목록·색인 페이지 판별 (2026-07-29 실측 기반)", () => {
+  // 실측: K-Startup 공고 목록은 구조필드 0 · 반복 34, 실제 공고는 구조필드 5~8.
+  const listing = "모집공고 ".repeat(13) + "마감 ".repeat(32) + "2026.08.01 2026.08.15";
+  const notice =
+    "사업 개요\n지원 대상: 예비창업자\n접수 기간: 2026.08.01 ~ 2026.08.15\n" +
+    "신청 방법: 온라인\n제출 서류: 사업계획서\n" +
+    "모집공고 ".repeat(6) +
+    "마감 ".repeat(3);
+
+  it("반복만 많고 개별 공고 구조가 없으면 목록으로 본다", () => {
+    expect(looksLikeIndexPage(listing)).toBe(true);
+  });
+
+  it("구조 필드가 있으면 반복이 많아도 목록이 아니다 (실제 공고 오탐 방지)", () => {
+    expect(looksLikeIndexPage(notice)).toBe(false);
+  });
+
+  it("반복이 적으면 목록이 아니다 (짧은 페이지)", () => {
+    expect(looksLikeIndexPage("공고 마감")).toBe(false);
+  });
+
+  it("빈 텍스트는 목록이 아니다", () => {
+    expect(looksLikeIndexPage("")).toBe(false);
+  });
+
+  it("프리체크가 목록 페이지를 Solar 판정 전에 반려한다", async () => {
+    const result = await precheck(
+      "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do",
+      doc(listing, "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do"),
+      { skipAgeCheck: true },
+    );
+    expect(result.verdict).toBe("reject");
+    expect(result.reason).toContain("목록");
+  });
+
+  it("개별 공고는 그대로 통과한다 (같은 도메인이어도)", async () => {
+    const result = await precheck(
+      "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn=1",
+      doc(notice, "https://www.k-startup.go.kr/x?schM=view&pbancSn=1"),
+      { skipAgeCheck: true },
+    );
+    expect(result.verdict).not.toBe("reject");
   });
 });

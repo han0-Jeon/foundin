@@ -176,6 +176,41 @@ export function announcementScore(text: string): number {
   return ANNOUNCEMENT_PATTERNS.reduce((count, re) => (re.test(text) ? count + 1 : count), 0);
 }
 
+// ── 목록·색인 페이지 판별 ─────────────────────────────────────
+// 공고 목록 페이지는 공고를 나열하므로 "모집공고"·"마감" 같은 표지가 잔뜩 잡힌다.
+// 그런데 개별 공고의 구조(접수기간·신청방법·제출서류…)는 하나도 없다. 이 비대칭이 신호다.
+//
+// 실측 (2026-07-29, 수집기 통과 텍스트 기준)
+//   K-Startup 공고 목록 : 구조필드 0 · 반복 34  → 목록
+//   실제 공고 5건       : 구조필드 5~8 · 반복 18~136 → 전부 통과 (오탐 0)
+// 구조필드 0 과 5 사이가 넓어서 임계값 1 은 보수적이다.
+//
+// 왜 필요한가: 사용자가 목록 URL 을 붙여넣으면 Solar 판정이 "공고 맞다"고 답하는 경우가
+// 있었다(실측). 그러면 목록 전체를 하나의 공고로 추출해 엉뚱한 브리프가 나온다.
+// 판정을 모델에 맡기지 않고 코드가 먼저 끊는다.
+const STRUCTURAL_PATTERNS = [
+  /접수\s*기간/,
+  /신청\s*기간/,
+  /신청\s*방법/,
+  /제출\s*서류/,
+  /지원\s*대상/,
+  /지원\s*자격/,
+  /신청\s*자격/,
+  /사업\s*개요/,
+  /지원\s*내용/,
+];
+const LISTING_MARKERS = [/모집\s*공고/g, /마감/g, /공고/g];
+const INDEX_MIN_REPEATS = 8;
+const INDEX_MAX_STRUCTURAL = 1;
+
+/** 개별 공고가 아니라 공고 목록·색인 페이지로 보이는가. */
+export function looksLikeIndexPage(text: string): boolean {
+  const structural = STRUCTURAL_PATTERNS.reduce((count, re) => (re.test(text) ? count + 1 : count), 0);
+  if (structural > INDEX_MAX_STRUCTURAL) return false;
+  const repeats = Math.max(...LISTING_MARKERS.map((re) => (text.match(re) ?? []).length));
+  return repeats >= INDEX_MIN_REPEATS;
+}
+
 // ── Tier2 도메인 나이 검사 (fail-open) ───────────────────────
 function pad(value: string): string {
   return value.padStart(2, "0");
@@ -297,10 +332,19 @@ export async function precheck(
     if (ageDays === null) log(`도메인 나이 조회 실패/생략 — 통과(fail-open): ${host}`);
   }
 
-  // 4. 공고 긍정 패턴 스코어
+  // 4. 목록·색인 페이지 반려 — 개별 공고가 아니면 여기서 끊는다 (모델에게 묻지 않는다)
+  if (looksLikeIndexPage(text)) {
+    return {
+      verdict: "reject",
+      tier: domain.tier,
+      reason: "개별 공고가 아니라 공고 목록·색인 페이지 — 목록에서 개별 공고를 열어 그 URL 을 주세요",
+    };
+  }
+
+  // 5. 공고 긍정 패턴 스코어
   const score = announcementScore(text);
 
-  // 5. 판정: Tier1 + 공고 패턴이면 Solar 판정 생략, 그 외는 Solar 판정으로 넘긴다.
+  // 6. 판정: Tier1 + 공고 패턴이면 Solar 판정 생략, 그 외는 Solar 판정으로 넘긴다.
   if (domain.tier === "tier1" && score >= ANNOUNCEMENT_MIN_HITS) {
     return { verdict: "pass_fast", tier: "tier1", reason: `공공 도메인 + 공고 패턴 ${score}개 충족` };
   }

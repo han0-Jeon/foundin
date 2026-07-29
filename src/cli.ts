@@ -284,7 +284,7 @@ async function commandDemo(flags: Flags): Promise<number> {
   });
   log(`  ${manualChoice}) 직접 입력\n`);
 
-  const answer = await prompt(`선택 [2]: `);
+  const answer = await prompt("선택: ");
   const choice = answer === "" ? 2 : Number(answer);
   let target: string | undefined;
   if (Number.isInteger(choice) && choice >= 1 && choice <= candidates.length) {
