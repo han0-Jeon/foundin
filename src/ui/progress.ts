@@ -25,9 +25,16 @@ const STEPS: { key: string; label: string }[] = [
 
 /** 회전하는 해. 전부 단폭(single-width) 문자라 한글과 섞여도 열이 안 밀린다. */
 const SPINNER = ["◐", "◓", "◑", "◒"];
-/** 일출 게이지 — 채워진 칸은 점점 높아지는 블록, 빈 칸은 옅은 음영. */
+/**
+ * 일출 게이지 — 채워진 칸은 점점 높아지는 블록.
+ *
+ * 빈 칸에 U+2591(░)을, 해에 U+2600(☀)을 썼더니 Git Bash 기본 폰트에서
+ * 각각 흰 덩어리와 ○ 로 대체돼 화면이 지저분해졌다(실측). 블록 문자는 잘 나오므로
+ * 그대로 두고, 나머지는 Latin-1·ASCII 로 낮춘다.
+ */
 const BLOCKS = "▁▂▃▄▅▆▇█";
-const EMPTY_CELL = "░";
+const EMPTY_CELL = "·";
+const SUN = "*";
 
 const FRAME_MS = 120;
 const LABEL_WIDTH = 10;
@@ -213,35 +220,31 @@ const ANSI = {
   reset: "\x1b[0m",
 };
 
-function useColor(stream: NodeJS.WriteStream): boolean {
+/**
+ * 색을 쓸지. 애니메이션 여부와 같이 간다 — 커서 제어 이스케이프를 쓰기로 한 화면이면
+ * 색 이스케이프도 당연히 먹는다. (예전엔 isTTY 를 따로 봤는데, Git Bash 에서 isTTY 가
+ * undefined 라 애니메이션은 켜지고 색만 꺼지는 반쪽 상태가 나왔다.)
+ */
+function useColor(animate: boolean): boolean {
   if (process.env.NO_COLOR) return false;
-  return Boolean(stream.isTTY);
+  return animate;
 }
 
 /**
- * Git Bash(mintty) 감지.
+ * 파일로 리다이렉트됐는지 (`> log.txt`). 여기에 제어문자가 들어가면 안 된다.
  *
- * Windows 의 mintty 는 콘솔이 아니라 pty 를 파이프로 흉내내기 때문에 Node 가
- * isTTY 를 false(정확히는 undefined)로 본다. 그대로 두면 Git Bash 사용자는
- * 애니메이션을 영영 못 본다.
- *
- * 파일 리다이렉트와는 구분할 수 있다 — mintty 창은 fd 가 FIFO(파이프)이고,
- * `> log.txt` 로 돌리면 FILE 이다. FIFO 일 때만 켜서 로그 파일 오염을 막는다.
- * (`| cat` 같은 진짜 파이프도 FIFO 라 여기 걸리지만, 흔치 않고 피해도 작다.)
+ * isTTY 는 Windows 의 Git Bash(mintty)에서 undefined 라 믿을 수 없다. mintty 는
+ * 콘솔이 아니라 pty 를 파이프로 흉내내기 때문이다. 그래서 "터미널인가"를 맞히는 대신
+ * "파일인가"만 확인하고, 파일이 아니면 그리는 쪽으로 간다.
  */
-function isMinttyTerminal(stream: NodeJS.WriteStream): boolean {
-  if (process.platform !== "win32") return false;
-  if (!process.env.MSYSTEM && !process.env.TERM?.startsWith("xterm")) return false;
-  // 파일로 리다이렉트된 경우만 제외한다. FIFO 만 허용했더니 npm run 을 거친
-  // 실제 Git Bash 환경에서 걸러져서(핸들 종류가 환경마다 다르다) 조건을 뒤집었다.
-  // 판단이 안 서면 켜는 쪽 — MSYSTEM 이 있다는 건 이미 Git Bash 세션이라는 뜻이다.
+function isRedirectedToFile(stream: NodeJS.WriteStream): boolean {
   const fd = (stream as unknown as { fd?: number }).fd;
-  // 주입된 스트림(테스트 더블)은 프로세스 fd 로 대신 판단하면 안 된다.
-  if (typeof fd !== "number") return false;
+  // 주입된 스트림(테스트 더블)은 프로세스 fd 로 대신 판단하면 안 된다 — 파일로 취급.
+  if (typeof fd !== "number") return true;
   try {
-    return !fstatSync(fd).isFile();
+    return fstatSync(fd).isFile();
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -272,7 +275,8 @@ export function shouldAnimate(stream: NodeJS.WriteStream, plain?: boolean, force
   if (force || process.env.FOUNDIN_PROGRESS) return true; // 감지 실패 시 강제 on
   if (process.env.CI) return false;
   if (stream.isTTY) return true;
-  return isMinttyTerminal(stream);
+  // isTTY 를 못 믿는 환경(Git Bash mintty 등) — 파일로 새지만 않으면 그린다.
+  return !isRedirectedToFile(stream);
 }
 
 export function createProgress(options: ProgressOptions = {}): ProgressReporter {
@@ -295,7 +299,7 @@ export function createProgress(options: ProgressOptions = {}): ProgressReporter 
   }
 
   const tracker = new StepTracker(now);
-  const color = useColor(stream);
+  const color = useColor(animate);
   let frame = 0;
   let drawnLines = 0;
   let timer: NodeJS.Timeout | undefined;
@@ -348,7 +352,7 @@ export function createProgress(options: ProgressOptions = {}): ProgressReporter 
     const total = formatElapsed(now() - startedAt);
     lines.push("");
     lines.push(
-      `  ${paint(ANSI.yellow, "☀")} ${gauge}  ${tracker.completedCount}/${STEPS.length} · 경과 ${total}`,
+      `  ${paint(ANSI.yellow, SUN)} ${gauge}  ${tracker.completedCount}/${STEPS.length} · 경과 ${total}`,
     );
 
     const out = `${ANSI.up(drawnLines)}${ANSI.clearBelow}${lines.join("\n")}\n`;

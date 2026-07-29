@@ -68,11 +68,17 @@ describe("formatElapsed", () => {
 
 describe("sunriseGauge — 해가 떠오르는 게이지", () => {
   it("0 이면 전부 빈 칸", () => {
-    expect(sunriseGauge(0, 7)).toBe("░░░░░░░");
+    expect(sunriseGauge(0, 7)).toBe("·······");
   });
 
   it("전부 차면 빈 칸이 없다", () => {
-    expect(sunriseGauge(7, 7)).not.toContain("░");
+    expect(sunriseGauge(7, 7)).not.toContain("·");
+  });
+
+  it("Git Bash 폰트에서 깨지던 글리프는 쓰지 않는다 (░ · ☀)", () => {
+    // U+2591(░)·U+2600(☀)은 Git Bash 기본 폰트에서 흰 덩어리·○ 로 대체됐다 (실측).
+    const gauge = sunriseGauge(3, 7);
+    expect(gauge).not.toMatch(/[░☀]/);
   });
 
   it("채워진 칸은 왼쪽에서 오른쪽으로 높아진다 (일출)", () => {
