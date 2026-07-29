@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractSourceUrl,
+  pickNonAnnouncement,
   extractTitle,
   parseSitemap,
   shuffle,
@@ -88,6 +89,25 @@ describe("extractTitle / titleFromSlug", () => {
 
   it("URL 이 깨져도 죽지 않는다", () => {
     expect(titleFromSlug("not a url")).toBe("(제목 없음)");
+  });
+});
+
+describe("pickNonAnnouncement — 반려 시연용 표본", () => {
+  it("항상 하나를 돌려준다", () => {
+    for (const r of [0, 0.3, 0.99]) {
+      expect(pickNonAnnouncement(() => r).url).toMatch(/^https:\/\//);
+    }
+  });
+
+  it("표본은 개별 공고가 아니라 포털 목록·메인이다 (마감돼도 안 썩는 URL)", () => {
+    // 개별 공고 URL 은 상세 파라미터(pbancSn 등)를 갖는다. 표본엔 없어야 한다.
+    for (const r of [0, 0.3, 0.6, 0.99]) {
+      expect(pickNonAnnouncement(() => r).url).not.toMatch(/pbancSn=|bcIdx=|ythPlcyDetail/);
+    }
+  });
+
+  it("고르면 무엇을 보게 되는지 설명이 붙는다", () => {
+    expect(pickNonAnnouncement(() => 0).note).toContain("반려");
   });
 });
 

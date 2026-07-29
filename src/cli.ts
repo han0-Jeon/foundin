@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { fstatSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -9,7 +10,7 @@ import { readCache, writeCache } from "./cache.js";
 import { loadDotEnv } from "./env.js";
 import { createRunner } from "./llm/runner.js";
 import { matchProfile, profileSchema, type Profile } from "./match/profile.js";
-import { fetchCandidates, type Candidate } from "./demo/candidates.js";
+import { fetchCandidates, pickNonAnnouncement, type Candidate } from "./demo/candidates.js";
 import { createProgress } from "./ui/progress.js";
 import type { AnalysisResult, Brief } from "./types.js";
 
@@ -52,11 +53,29 @@ function log(message: string): void {
 }
 
 /**
- * 한 줄 입력을 받는다. 대화형 터미널이 아니면(파이프·CI) 묻지 않고 기본값으로 넘어간다 —
- * 그러지 않으면 자동화 환경에서 영원히 멈춘다.
+ * 사람이 앉아 있는 터미널인가.
+ *
+ * process.stdin.isTTY 만 보면 안 된다 — Windows 의 Git Bash(mintty)는 콘솔이 아니라
+ * pty 를 파이프로 흉내내서 isTTY 가 undefined 다. 그래서 실제 사용자가 앉아 있는데도
+ * "비대화형" 으로 오판해 질문을 건너뛰었다 (실측). 파일로 입력을 받는 경우만 제외한다.
+ */
+function stdinIsInteractive(): boolean {
+  if (process.stdin.isTTY) return true;
+  if (process.env.CI) return false;
+  if (!process.env.MSYSTEM && !process.env.TERM?.startsWith("xterm")) return false;
+  try {
+    return !fstatSync(0).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 한 줄 입력을 받는다. 사람이 없는 환경(파이프·CI)에서는 묻지 않고 기본값으로 넘어간다 —
+ * 그러지 않으면 자동화가 영원히 멈춘다.
  */
 async function prompt(question: string): Promise<string> {
-  if (!process.stdin.isTTY) {
+  if (!stdinIsInteractive()) {
     log(`${question}(비대화형 — 기본값 사용)`);
     return "";
   }
@@ -216,7 +235,7 @@ async function commandToday(flags: Flags): Promise<number> {
   return 0;
 }
 
-/** 동봉 목록에서 후보를 만든다 (네트워크가 막혔을 때의 폴백). */
+/** 동봉 목록에서 공고 후보를 만든다 (네트워크가 막혔을 때의 폴백). */
 async function bundledCandidates(count: number): Promise<Candidate[]> {
   try {
     const raw = await readFile(join("examples", "demo-urls.txt"), "utf8");
@@ -225,7 +244,11 @@ async function bundledCandidates(count: number): Promise<Candidate[]> {
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("#"))
       .slice(0, count)
-      .map((url) => ({ title: "(동봉 예시 공고)", url }));
+      .map((url) => ({
+        title: "(동봉 예시 공고)",
+        url,
+        note: "마감돼 내려갔을 수 있습니다",
+      }));
   } catch {
     return [];
   }
@@ -243,25 +266,30 @@ async function commandDemo(flags: Flags): Promise<number> {
   log("API 키 없이 검증 로직만 보시려면: npm test\n");
 
   log("지금 올라와 있는 공고를 불러오는 중…");
-  let candidates = await fetchCandidates(2);
-  if (candidates.length === 0) {
+  let live = await fetchCandidates(1);
+  if (live.length === 0) {
     log("  (목록을 못 불러와 동봉 예시로 대체합니다)");
-    candidates = await bundledCandidates(2);
+    live = await bundledCandidates(1);
   }
 
-  log("\n분석할 공고를 고르세요.\n");
+  // 1번은 일부러 '공고가 아닌 페이지'다. 반려되는 장면이 이 파이프라인의 핵심 증거라서.
+  const candidates: Candidate[] = [pickNonAnnouncement(), ...live];
+  const manualChoice = candidates.length + 1;
+
+  log("\n무엇을 분석할까요?\n");
   candidates.forEach((c, i) => {
     log(`  ${i + 1}) ${c.title}`);
-    log(`     ${c.url}`);
+    log(`     ${c.note}`);
+    log(`     ${c.url}\n`);
   });
-  const manualChoice = candidates.length + 1;
   log(`  ${manualChoice}) 직접 입력\n`);
 
-  const answer = await prompt(`선택 [1]: `);
+  const answer = await prompt(`선택 [2]: `);
+  const choice = answer === "" ? 2 : Number(answer);
   let target: string | undefined;
-  if (answer === "" || answer === "1") target = candidates[0]?.url;
-  else if (Number(answer) >= 1 && Number(answer) <= candidates.length) target = candidates[Number(answer) - 1]?.url;
-  else if (answer === String(manualChoice)) {
+  if (Number.isInteger(choice) && choice >= 1 && choice <= candidates.length) {
+    target = candidates[choice - 1]?.url;
+  } else if (choice === manualChoice) {
     const typed = await prompt("공고 URL: ");
     target = typed || undefined;
   } else {

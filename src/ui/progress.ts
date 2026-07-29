@@ -42,7 +42,13 @@ const SPINNER = ["◐", "◓", "◑", "◒"];
 const CORE = ["*", "+", "x", "+"];
 
 const FRAME_MS = 120;
-const LABEL_WIDTH = 10;
+/** 가장 긴 라벨("프리체크")이 8칸이다. 더 주면 라벨과 본문 사이가 허하게 벌어진다. */
+const LABEL_WIDTH = 8;
+/**
+ * 화면을 터미널 폭 전체로 늘리지 않는다.
+ * 넓은 창에서 경과 시간이 오른쪽 끝까지 밀려나면 본문과 시간이 눈으로 안 이어진다.
+ */
+const MAX_WIDTH = 72;
 /** 진행 중 단계 오른쪽에 도는 해의 궤적 폭. */
 const TRAIL_WIDTH = 12;
 /**
@@ -336,7 +342,8 @@ export function createProgress(options: ProgressOptions = {}): ProgressReporter 
   const paint = (c: string, text: string): string => (color ? `${c}${text}${ANSI.reset}` : text);
 
   const render = (): void => {
-    const columns = stream.columns && stream.columns > 20 ? stream.columns : 80;
+    const term = stream.columns && stream.columns > 20 ? stream.columns : 80;
+    const columns = Math.min(term, MAX_WIDTH);
     const lines: string[] = [];
 
     for (const row of tracker.visibleRows) {

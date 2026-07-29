@@ -16,6 +16,40 @@ export interface Candidate {
   title: string;
   /** 분석 대상 원문 URL (정부 포털) */
   url: string;
+  /** 한 줄 설명 — 이 후보를 고르면 무엇을 보게 되는지 */
+  note: string;
+}
+
+/**
+ * 공고가 아닌 페이지 표본.
+ *
+ * 데모의 절반은 "안 되는 걸 안 된다고 하는가" 를 보여주는 데 쓴다. 이 파이프라인의 요점은
+ * 잘 요약하는 게 아니라 지어내지 않는 것이라서, 판정 단계가 포털 메인·목록 페이지를
+ * 반려하는 장면이 발행된 브리프보다 오히려 더 중요한 증거다.
+ *
+ * 개별 공고와 달리 포털의 목록·메인 페이지는 URL 이 바뀌지 않으므로 동봉해도 썩지 않는다.
+ */
+const NON_ANNOUNCEMENT_SAMPLES: Candidate[] = [
+  {
+    title: "K-Startup 사업공고 목록",
+    url: "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do",
+    note: "개별 공고가 아니라 목록 페이지 — 반려되는 게 정상입니다",
+  },
+  {
+    title: "기업마당 메인",
+    url: "https://www.bizinfo.go.kr/",
+    note: "포털 메인 — 반려되는 게 정상입니다",
+  },
+  {
+    title: "온통청년 메인",
+    url: "https://www.youthcenter.go.kr/main.do",
+    note: "포털 메인 — 반려되는 게 정상입니다",
+  },
+];
+
+/** 공고가 아닌 표본 하나를 무작위로 고른다. */
+export function pickNonAnnouncement(rng: () => number = Math.random): Candidate {
+  return shuffle(NON_ANNOUNCEMENT_SAMPLES, rng)[0]!;
 }
 
 async function getText(url: string): Promise<string | null> {
@@ -124,7 +158,11 @@ export async function fetchCandidates(count: number, rng: () => number = Math.ra
     const url = extractSourceUrl(html);
     if (!url) continue;
     if (picked.some((c) => c.url === url)) continue;
-    picked.push({ title: extractTitle(html, page), url });
+    picked.push({
+      title: extractTitle(html, page),
+      url,
+      note: "지금 접수 중인 실제 공고 — 정독하고 브리프를 만듭니다",
+    });
   }
   return picked;
 }
