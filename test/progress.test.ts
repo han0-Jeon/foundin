@@ -5,7 +5,7 @@ import {
   displayWidth,
   formatElapsed,
   shouldAnimate,
-  sunriseGauge,
+  sunTrail,
   truncate,
 } from "../src/ui/progress.js";
 
@@ -64,34 +64,47 @@ describe("formatElapsed", () => {
     expect(formatElapsed(84_000)).toBe("1m 24s");
     expect(formatElapsed(600_000)).toBe("10m 00s");
   });
+
+  it("precise 면 분 단위에서도 0.1초를 남긴다 (진행 중 단계용)", () => {
+    // 몇 분 걸리는 구간에서 매 프레임 바뀌는 유일한 '정보'다.
+    expect(formatElapsed(134_300, true)).toBe("2m 14.3s");
+    expect(formatElapsed(134_400, true)).toBe("2m 14.4s");
+    expect(formatElapsed(63_000, true)).toBe("1m 03.0s");
+  });
+
+  it("precise 여도 60초 미만은 형식이 같다", () => {
+    expect(formatElapsed(1_234, true)).toBe("1.2s");
+  });
 });
 
-describe("sunriseGauge — 해가 떠오르는 게이지", () => {
-  it("0 이면 전부 빈 칸", () => {
-    expect(sunriseGauge(0, 7)).toBe("·······");
+describe("sunTrail — 진행 중 단계의 해 궤적", () => {
+  it("폭이 항상 일정하다 (줄 수·열 수가 흔들리면 화면이 깨진다)", () => {
+    for (let f = 0; f < 60; f += 1) expect(sunTrail(f)).toHaveLength(12);
   });
 
-  it("전부 차면 빈 칸이 없다", () => {
-    expect(sunriseGauge(7, 7)).not.toContain("·");
+  it("배경은 공백이다 — 점을 깔면 진행률 막대로 오독된다", () => {
+    expect(sunTrail(0)).not.toContain("·");
   });
 
-  it("Git Bash 폰트에서 깨지던 글리프는 쓰지 않는다 (░ · ☀)", () => {
-    // U+2591(░)·U+2600(☀)은 Git Bash 기본 폰트에서 흰 덩어리·○ 로 대체됐다 (실측).
-    const gauge = sunriseGauge(3, 7);
-    expect(gauge).not.toMatch(/[░☀]/);
-  });
-
-  it("채워진 칸은 왼쪽에서 오른쪽으로 높아진다 (일출)", () => {
-    const blocks = "▁▂▃▄▅▆▇█";
-    const gauge = sunriseGauge(7, 7);
-    const heights = [...gauge].map((c) => blocks.indexOf(c));
-    for (let i = 1; i < heights.length; i += 1) {
-      expect(heights[i]!).toBeGreaterThan(heights[i - 1]!);
+  it("전부 ASCII 다 (폰트 대체가 일어날 수 없다)", () => {
+    for (let f = 0; f < 60; f += 1) {
+      expect(sunTrail(f)).toMatch(/^[ *+x-]+$/);
     }
   });
 
-  it("길이는 항상 total 과 같다", () => {
-    expect(sunriseGauge(3, 7)).toHaveLength(7);
+  it("해가 매 프레임 그대로인 구간이 길지 않다 (정지 화면 방지)", () => {
+    const seen = new Set<string>();
+    for (let f = 0; f < 40; f += 1) seen.add(sunTrail(f));
+    // 40프레임(4.8초) 안에 최소 20가지 이상의 서로 다른 모양이 나와야 한다.
+    expect(seen.size).toBeGreaterThanOrEqual(20);
+  });
+
+  it("궤적이 폭 밖으로 나가지 않는다", () => {
+    for (let f = 0; f < 200; f += 1) {
+      const t = sunTrail(f);
+      expect(t.length).toBe(12);
+      expect(t.trim().length).toBeGreaterThan(0);
+    }
   });
 });
 
