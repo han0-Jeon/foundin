@@ -232,13 +232,34 @@ function useColor(stream: NodeJS.WriteStream): boolean {
 function isMinttyTerminal(stream: NodeJS.WriteStream): boolean {
   if (process.platform !== "win32") return false;
   if (!process.env.MSYSTEM && !process.env.TERM?.startsWith("xterm")) return false;
+  // 파일로 리다이렉트된 경우만 제외한다. FIFO 만 허용했더니 npm run 을 거친
+  // 실제 Git Bash 환경에서 걸러져서(핸들 종류가 환경마다 다르다) 조건을 뒤집었다.
+  // 판단이 안 서면 켜는 쪽 — MSYSTEM 이 있다는 건 이미 Git Bash 세션이라는 뜻이다.
+  const fd = (stream as unknown as { fd?: number }).fd;
+  // 주입된 스트림(테스트 더블)은 프로세스 fd 로 대신 판단하면 안 된다.
+  if (typeof fd !== "number") return false;
   try {
-    // WriteStream 타입에는 fd 가 없지만 process.stderr 는 실제로 갖고 있다.
-    const maybeFd = (stream as unknown as { fd?: number }).fd;
-    return fstatSync(typeof maybeFd === "number" ? maybeFd : 2).isFIFO();
+    return !fstatSync(fd).isFile();
   } catch {
-    return false;
+    return true;
   }
+}
+
+/** FOUNDIN_DEBUG_TTY=1 이면 감지 근거를 찍는다 (사용자 환경 진단용). */
+function debugDetection(stream: NodeJS.WriteStream, decision: boolean): void {
+  if (!process.env.FOUNDIN_DEBUG_TTY) return;
+  let fdKind = "?";
+  try {
+    const maybeFd = (stream as unknown as { fd?: number }).fd;
+    const st = fstatSync(typeof maybeFd === "number" ? maybeFd : 2);
+    fdKind = st.isFIFO() ? "FIFO" : st.isFile() ? "FILE" : st.isCharacterDevice() ? "CHAR" : "기타";
+  } catch (err) {
+    fdKind = `err:${(err as NodeJS.ErrnoException).code ?? "?"}`;
+  }
+  process.stderr.write(
+    `[tty] platform=${process.platform} MSYSTEM=${process.env.MSYSTEM ?? "-"} ` +
+      `TERM=${process.env.TERM ?? "-"} isTTY=${String(stream.isTTY)} fd=${fdKind} → 애니메이션=${decision}\n`,
+  );
 }
 
 /**
@@ -258,6 +279,7 @@ export function createProgress(options: ProgressOptions = {}): ProgressReporter 
   const stream = options.stream ?? process.stderr;
   const now = options.now ?? Date.now;
   const animate = shouldAnimate(stream, options.plain, options.force);
+  debugDetection(stream, animate);
   const startedAt = now();
 
   if (!animate) {
