@@ -72,8 +72,22 @@ cp .env.example .env               # UPSTAGE_API_KEY 입력
 npm run demo
 ```
 
-`npm run demo` 는 동봉한 실제 공고를 정독해 브리프를 만듭니다. URL 을 찾아 붙여넣지 않으셔도
-됩니다. 마감돼 내려간 공고면 다음 것으로 알아서 넘어갑니다.
+`npm run demo` 는 지금 올라와 있는 공고 중 두 건을 무작위로 뽑아 보여주고, 고르면 그 공고를
+정독합니다. URL 을 찾아 붙여넣지 않으셔도 됩니다.
+
+```
+분석할 공고를 고르세요.
+
+  1) 2026년 ICT혁신센터 입주기업 모집공고(상시)
+     https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn=177493
+  2) 2026년 글로벌비즈니스센터 입주기업 상시모집 공고
+     https://www.mss.go.kr/site/smba/ex/bbs/View.do?cbIdx=310&bcIdx=1068619
+  3) 직접 입력
+
+선택 [1]:
+```
+
+후보는 foundin.kr 사이트맵에서 가져오므로 별도 키가 필요 없고, 매번 다른 공고가 나옵니다.
 
 돌리면 단계별 진행이 이렇게 보입니다. 공고에 따라 추출이 수 분 걸려서, 어디까지 갔고 얼마나
 지났는지 보이게 해뒀습니다.
@@ -128,7 +142,7 @@ API 키가 없어도 검증 로직은 전부 확인하실 수 있습니다. 테�
 네트워크를 타지 않습니다.
 
 ```bash
-npm test          # 13개 파일 140개 테스트, 전부 오프라인
+npm test          # 14개 파일 156개 테스트, 전부 오프라인
 npm run typecheck
 ```
 

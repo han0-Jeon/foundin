@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { createInterface } from "node:readline/promises";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { analyzeUrl } from "./agent/orchestrator.js";
@@ -8,6 +9,7 @@ import { readCache, writeCache } from "./cache.js";
 import { loadDotEnv } from "./env.js";
 import { createRunner } from "./llm/runner.js";
 import { matchProfile, profileSchema, type Profile } from "./match/profile.js";
+import { fetchCandidates, type Candidate } from "./demo/candidates.js";
 import { createProgress } from "./ui/progress.js";
 import type { AnalysisResult, Brief } from "./types.js";
 
@@ -47,6 +49,23 @@ function parseArgs(argv: string[]): { command: string; flags: Flags } {
 
 function log(message: string): void {
   process.stderr.write(`${message}\n`);
+}
+
+/**
+ * 한 줄 입력을 받는다. 대화형 터미널이 아니면(파이프·CI) 묻지 않고 기본값으로 넘어간다 —
+ * 그러지 않으면 자동화 환경에서 영원히 멈춘다.
+ */
+async function prompt(question: string): Promise<string> {
+  if (!process.stdin.isTTY) {
+    log(`${question}(비대화형 — 기본값 사용)`);
+    return "";
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return (await rl.question(question)).trim();
+  } finally {
+    rl.close();
+  }
 }
 
 async function loadProfile(path: string): Promise<Profile> {
@@ -197,45 +216,86 @@ async function commandToday(flags: Flags): Promise<number> {
   return 0;
 }
 
+/** 동봉 목록에서 후보를 만든다 (네트워크가 막혔을 때의 폴백). */
+async function bundledCandidates(count: number): Promise<Candidate[]> {
+  try {
+    const raw = await readFile(join("examples", "demo-urls.txt"), "utf8");
+    return raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .slice(0, count)
+      .map((url) => ({ title: "(동봉 예시 공고)", url }));
+  } catch {
+    return [];
+  }
+}
+
 /**
- * 인자 없이 도는 데모. 처음 보는 사람이 URL 을 찾아 붙여넣지 않아도 되게,
- * 동봉한 실제 공고를 위에서부터 시도해 처음 수집에 성공한 것으로 브리프를 만든다.
- * (정부 공고는 마감되면 상세가 내려가므로 목록으로 둔다 — examples/demo-urls.txt)
+ * 인자 없이 도는 데모.
+ *
+ * 지금 올라와 있는 공고 중 무작위로 두 건을 뽑아 보여주고, 직접 입력도 받는다.
+ * URL 을 하드코딩하면 마감돼 내려갔을 때 데모가 죽고, 매번 같은 공고라 캐시에 걸려
+ * 파이프라인이 아예 안 도는 문제도 있었다 (진행 표시가 안 보인다는 실사용 피드백).
  */
 async function commandDemo(flags: Flags): Promise<number> {
-  const listFile = flags.urls ?? join("examples", "demo-urls.txt");
-  const urls = (await readFile(listFile, "utf8"))
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"));
-
-  log("foundin 데모 — 실제 공고 하나를 정독해 판단 브리프를 만듭니다.");
+  log("foundin 데모 — 공고 하나를 정독해 판단 브리프를 만듭니다.");
   log("API 키 없이 검증 로직만 보시려면: npm test\n");
 
+  log("지금 올라와 있는 공고를 불러오는 중…");
+  let candidates = await fetchCandidates(2);
+  if (candidates.length === 0) {
+    log("  (목록을 못 불러와 동봉 예시로 대체합니다)");
+    candidates = await bundledCandidates(2);
+  }
+
+  log("\n분석할 공고를 고르세요.\n");
+  candidates.forEach((c, i) => {
+    log(`  ${i + 1}) ${c.title}`);
+    log(`     ${c.url}`);
+  });
+  const manualChoice = candidates.length + 1;
+  log(`  ${manualChoice}) 직접 입력\n`);
+
+  const answer = await prompt(`선택 [1]: `);
+  let target: string | undefined;
+  if (answer === "" || answer === "1") target = candidates[0]?.url;
+  else if (Number(answer) >= 1 && Number(answer) <= candidates.length) target = candidates[Number(answer) - 1]?.url;
+  else if (answer === String(manualChoice)) {
+    const typed = await prompt("공고 URL: ");
+    target = typed || undefined;
+  } else {
+    log(`알 수 없는 선택입니다: ${answer}`);
+    return 1;
+  }
+
+  if (!target) {
+    log("분석할 공고가 없습니다. URL 을 직접 주세요: npm run analyze -- \"<공고 URL>\"");
+    return 1;
+  }
+
+  log(`\n분석 대상: ${target}\n`);
   const demoFlags: Flags = {
     ...flags,
     profile: flags.profile ?? join("examples", "profile.pre-seoul.json"),
-    forceProgress: !flags.noProgress, // 데모는 진행 표시가 핵심이라 켜둔다
+    // 데모의 요점은 파이프라인이 도는 걸 보여주는 것이다. 캐시를 타면 즉시 끝나 아무것도 안 보인다.
+    noCache: true,
+    forceProgress: !flags.noProgress,
   };
 
-  for (const [index, url] of urls.entries()) {
-    log(`공고 ${index + 1}/${urls.length}: ${url}`);
-    const result = await runAnalysis(url, demoFlags);
-    if (result.ok) {
-      const profile = await loadProfile(demoFlags.profile!);
-      const match = { profile, result: matchProfile(result.brief, profile) };
-      process.stdout.write(`${renderTerminal(result.brief, match)}\n`);
-      const saved = await saveBrief(result.brief, demoFlags.out, renderMarkdown(result.brief, match));
-      log(`\n저장됨: ${saved}`);
-      return 0;
-    }
-    log(`  ✗ ${describeFailure(result)}`);
-    if (index < urls.length - 1) log("  다음 공고로 넘어갑니다 (마감돼 내려간 공고일 수 있습니다).\n");
+  const result = await runAnalysis(target, demoFlags);
+  if (!result.ok) {
+    log(`\n✗ ${describeFailure(result)}`);
+    if (result.stage === "verify") log("  검증을 통과하지 못한 브리프는 발행하지 않습니다 (fail-closed).");
+    return result.not_a_program ? 2 : 3;
   }
 
-  log("\n동봉한 공고가 전부 마감된 것 같습니다. 보고 싶은 공고 URL 을 직접 주세요:");
-  log("  npm run analyze -- \"<공고 URL>\"");
-  return 3;
+  const profile = await loadProfile(demoFlags.profile!);
+  const match = { profile, result: matchProfile(result.brief, profile) };
+  process.stdout.write(`${renderTerminal(result.brief, match)}\n`);
+  const saved = await saveBrief(result.brief, demoFlags.out, renderMarkdown(result.brief, match));
+  log(`\n저장됨: ${saved}`);
+  return 0;
 }
 
 const { command, flags } = parseArgs(process.argv.slice(2));
