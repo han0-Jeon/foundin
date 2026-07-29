@@ -54,12 +54,43 @@ Solar Open 2 가 공고 원문과 첨부를 읽고 자격·지원금·마감·�
 
 ## 돌려보기
 
-```bash
+Node 20 이상이면 됩니다.
+
+**Windows (PowerShell)**
+
+```powershell
 npm install
-cp .env.example .env        # UPSTAGE_API_KEY 입력
+Copy-Item .env.example .env        # UPSTAGE_API_KEY 입력
 
 npm run analyze -- "https://www.k-startup.go.kr/...(공고 URL)"
 ```
+
+**macOS · Linux (bash)**
+
+```bash
+npm install
+cp .env.example .env               # UPSTAGE_API_KEY 입력
+
+npm run analyze -- "https://www.k-startup.go.kr/...(공고 URL)"
+```
+
+돌리면 단계별 진행이 이렇게 보입니다. 공고에 따라 추출이 수 분 걸려서, 어디까지 갔고 얼마나
+지났는지 보이게 해뒀습니다.
+
+```
+  ✓ 수집       원문 1 · 첨부 3건                          1.2s
+  ✓ 프리체크   공공 도메인 + 공고 패턴 9개 충족            0.3s
+  – 판정       생략
+  ◐ 추출       조건·날짜·서류 추출                      1m 33s
+    검증
+    조언
+    조립
+
+  ☀ ▁▂▃░░░░  3/7 · 경과 1m 35s
+```
+
+`판정 생략`은 프리체크가 공공 도메인임을 결정적으로 확인해서 Solar 호출을 하나 아꼈다는 뜻입니다.
+파이프에 물리거나 로그로 받으면 애니메이션 없이 한 줄씩 나갑니다(`--no-progress` 로 끌 수도 있습니다).
 
 내 조건과 대조까지 하려면 프로필을 붙입니다. 이 JSON 은 로컬에서만 쓰입니다.
 
@@ -69,8 +100,15 @@ npm run analyze -- "https://...(공고 URL)" --profile examples/profile.pre-seou
 
 URL 여러 개를 던져서 "오늘 확인할 공고"로 정리하는 모드도 있습니다.
 
+```powershell
+# PowerShell
+Copy-Item urls.example.txt urls.txt   # 한 줄에 하나씩
+npm run today -- --profile examples/profile.pre-seoul.json
+```
+
 ```bash
-cp urls.example.txt urls.txt   # 한 줄에 하나씩
+# bash
+cp urls.example.txt urls.txt          # 한 줄에 하나씩
 npm run today -- --profile examples/profile.pre-seoul.json
 ```
 
@@ -78,7 +116,7 @@ API 키가 없어도 검증 로직은 전부 확인하실 수 있습니다. 테�
 네트워크를 타지 않습니다.
 
 ```bash
-npm test          # 12개 파일 109개 테스트, 전부 오프라인
+npm test          # 13개 파일 135개 테스트, 전부 오프라인
 npm run typecheck
 ```
 
