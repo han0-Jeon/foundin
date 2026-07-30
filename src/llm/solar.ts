@@ -122,6 +122,16 @@ export class SolarRunner implements LlmRunner {
         await backoff(attempt);
         continue;
       }
+      // 베타 모델(solar-open2)은 2026-08-01 종료 예정이다. 그 뒤에 이 저장소를 클론해
+      // 돌리면 "모델 없음" 오류만 보게 되는데, 그것만으로는 무엇을 고쳐야 할지 알 수 없다.
+      if (response.status === 404 || (response.status === 400 && /model/i.test(errorText))) {
+        throw new Error(
+          `모델 '${this.name}' 을 쓸 수 없습니다 (HTTP ${response.status}). ` +
+            "Solar Open 2 는 베타(~2026-08-01)라 종료됐을 수 있습니다. " +
+            "console.upstage.ai 에서 쓸 수 있는 모델명을 확인해 .env 의 UPSTAGE_MODEL 을 바꿔주세요. " +
+            "구독 CLI 로 갈아타려면 FOUNDIN_RUNNER=claude-code 또는 codex.",
+        );
+      }
       throw new Error(`Solar API HTTP ${response.status}: ${errorText}`);
     }
     throw new Error(`Solar API 실패 (${MAX_ATTEMPTS}회 시도): ${lastError}`);
