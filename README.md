@@ -171,6 +171,71 @@ npm test          # 15개 파일 175개 테스트, 전부 오프라인
 npm run typecheck
 ```
 
+## 전체 구조
+
+엔진은 하나고 입구가 셋입니다. 서비스 워커·CLI·MCP 가 **같은 파이프라인**을 지나가고,
+발행 여부는 언제나 마지막 게이트가 정합니다.
+
+```mermaid
+flowchart TB
+    subgraph SRC["정부 포털 5곳"]
+        P["K-스타트업 · 중기부 · 청년정책<br/>콘텐츠진흥원 · 소상공인24"]
+    end
+
+    subgraph SVC["foundin.kr — 서비스 (Vercel + Supabase)"]
+        SY["매일 05:00 KST 수집"]
+        Q[("공고 2,368건<br/>브리프 큐")]
+        PG["/programs<br/>공개 브리프 473건"]
+    end
+
+    W["워커<br/>큐 폴링 (상시)"]
+    C2["CLI<br/>npm run demo"]
+    M["MCP 도구<br/>다른 에이전트가 호출"]
+
+    subgraph ENG["이 저장소 — 분석 엔진"]
+        A1["① 수집 · HTML·PDF·HWP·HWPX·DOCX"]
+        A2["② 프리체크 · 도메인 티어 · 위험신호 · 목록 반려"]
+        A3["③ 판정 · 지원사업 공고인가"]
+        A4["④ 추출 · 자격·마감·금액 + 항목마다 원문 인용"]
+        A5["⑤ 검증 · 인용을 원문과 substring 대조"]
+        A6{"⑥ 발행 게이트"}
+        A7["⑦ 조언 · 처지별 분기"]
+    end
+
+    SOLAR(["Solar API"])
+    HOLD["보류·반려<br/>발행 안 함 + 사유 기록"]
+
+    P --> SY --> Q
+    Q -.->|claim| W
+    W --> A1
+    C2 --> A1
+    M --> A1
+    A1 --> A2
+    A2 -->|비공고·위험신호·목록| HOLD
+    A2 --> A3
+    A3 -->|공고 아님| HOLD
+    A3 --> A4
+    A4 --> A5
+    A5 --> A6
+    A6 -->|핵심 필드 검증 실패| HOLD
+    A6 -->|통과| A7
+    A7 -->|submit| PG
+
+    A3 <--> SOLAR
+    A4 <--> SOLAR
+    A7 <--> SOLAR
+
+    classDef code fill:#eef6ff,stroke:#4a7fb5,color:#123
+    classDef llm fill:#fff6e5,stroke:#c8922a,color:#321
+    classDef stop fill:#fdecec,stroke:#c05252,color:#311
+    class A1,A2,A5,A6 code
+    class A3,A4,A7,SOLAR llm
+    class HOLD stop
+```
+
+파란 칸은 **결정적 코드**, 노란 칸은 **Solar 가 추론하는 곳**입니다. 판단은 모델이 하고
+발행 여부는 코드가 정합니다 — 게이트는 모델이 볼 수 없는 자리에 있습니다.
+
 ## 파이프라인
 
 ```
