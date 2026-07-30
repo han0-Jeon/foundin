@@ -263,8 +263,21 @@ async function bundledCandidates(count: number): Promise<Candidate[]> {
  */
 async function commandDemo(flags: Flags): Promise<number> {
   log("foundin 데모 — 공고 하나를 정독해 판단 브리프를 만듭니다.");
-  log("API 키 없이 검증 로직만 보시려면: npm test\n");
 
+  // 러너를 먼저 세워본다. 키가 없으면 후보를 다 불러오고 메뉴까지 고른 뒤에 죽어서,
+  // 처음 써보는 사람이 몇 분을 버린 다음 스택 트레이스를 보게 된다.
+  try {
+    await createRunner(flags.runner);
+  } catch (error) {
+    log(`\n✗ ${error instanceof Error ? error.message : String(error)}`);
+    log("\n  .env 를 만들고 키를 넣어주세요:");
+    log("    Windows(PowerShell)  Copy-Item .env.example .env");
+    log("    macOS · Linux        cp .env.example .env");
+    log("\n  키 없이 검증 로직만 확인하시려면: npm test");
+    return 1;
+  }
+
+  log("API 키 없이 검증 로직만 보시려면: npm test\n");
   log("지금 올라와 있는 공고를 불러오는 중…");
   let live = await fetchCandidates(1);
   if (live.length === 0) {
@@ -302,7 +315,10 @@ async function commandDemo(flags: Flags): Promise<number> {
     return 1;
   }
 
-  log(`\n분석 대상: ${target}\n`);
+  log(`\n분석 대상: ${target}`);
+  // 몇 분을 기다려야 하는지 미리 알려준다. 수치는 프로덕션 실측이다 (지어낸 값이 아니다).
+  log("공고 하나에 보통 5분쯤 걸립니다 — 발행된 브리프 489건 중간값 5분, 90%가 10분 이내.");
+  log("Ctrl+C 로 언제든 중단할 수 있습니다.\n");
   const demoFlags: Flags = {
     ...flags,
     profile: flags.profile ?? join("examples", "profile.pre-seoul.json"),
@@ -326,18 +342,26 @@ async function commandDemo(flags: Flags): Promise<number> {
   return 0;
 }
 
+async function run(command: string, flags: Flags): Promise<number> {
+  if (command === "analyze") return commandAnalyze(flags);
+  if (command === "demo") return commandDemo(flags);
+  if (command === "today") return commandToday(flags);
+  log("foundin — 정부지원사업 판단 브리프 에이전트");
+  log("  npm run demo                    지금 올라와 있는 공고로 한 번 돌려보기 (인자 없음)");
+  log("  npm run analyze -- <공고 URL>   [--profile p.json] [--json] [--no-cache] [--progress|--no-progress]");
+  log("  npm run today   -- --profile p.json [--urls urls.txt] [--top 5]");
+  return 1;
+}
+
 const { command, flags } = parseArgs(process.argv.slice(2));
-const exitCode = await (command === "analyze"
-  ? commandAnalyze(flags)
-  : command === "demo"
-    ? commandDemo(flags)
-    : command === "today"
-      ? commandToday(flags)
-      : (async () => {
-          log("foundin — 정부지원사업 판단 브리프 에이전트");
-          log("  npm run demo                    동봉한 실제 공고로 한 번 돌려보기 (인자 없음)");
-          log("  npm run analyze -- <공고 URL>   [--profile p.json] [--json] [--no-cache] [--progress|--no-progress]");
-          log("  npm run today   -- --profile p.json [--urls urls.txt] [--top 5]");
-          return 1;
-        })());
+let exitCode: number;
+try {
+  exitCode = await run(command, flags);
+} catch (error) {
+  // 처음 써보는 사람에게 스택 트레이스를 보여주지 않는다. 원인 한 줄과 다음 행동만.
+  log(`\n✗ ${error instanceof Error ? error.message : String(error)}`);
+  if (process.env.FOUNDIN_DEBUG && error instanceof Error) log(error.stack ?? "");
+  log("\n  자세한 스택이 필요하면 FOUNDIN_DEBUG=1 을 붙여 다시 실행하세요.");
+  exitCode = 1;
+}
 process.exit(exitCode);
