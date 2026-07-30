@@ -122,13 +122,16 @@ export class SolarRunner implements LlmRunner {
         await backoff(attempt);
         continue;
       }
-      // 베타 모델(solar-open2)은 2026-08-01 종료 예정이다. 그 뒤에 이 저장소를 클론해
-      // 돌리면 "모델 없음" 오류만 보게 되는데, 그것만으로는 무엇을 고쳐야 할지 알 수 없다.
+      // 모델 전환 일정 (Upstage 공지 2026-07-29): solar-open2 는 8/4 자정에 alias 삭제,
+      // solar-pro4 는 8/3 18:00 부터. 어느 쪽 창에 있는지에 따라 고칠 값이 달라서
+      // "모델 없음" 오류만 보여주면 무엇을 바꿔야 할지 알 수 없다.
       if (response.status === 404 || (response.status === 400 && /model/i.test(errorText))) {
+        const successor = this.name === "solar-open2" ? "solar-pro4" : "solar-open2";
         throw new Error(
           `모델 '${this.name}' 을 쓸 수 없습니다 (HTTP ${response.status}). ` +
-            "Solar Open 2 는 베타(~2026-08-01)라 종료됐을 수 있습니다. " +
-            "console.upstage.ai 에서 쓸 수 있는 모델명을 확인해 .env 의 UPSTAGE_MODEL 을 바꿔주세요. " +
+            `.env 의 UPSTAGE_MODEL 을 '${successor}' 로 바꿔 보세요 — ` +
+            "solar-open2 는 2026-08-04 자정에 삭제됐고 solar-pro4 는 08-03 18:00 부터 호출됩니다. " +
+            "쓸 수 있는 모델은 console.upstage.ai 에서 확인하실 수 있습니다. " +
             "구독 CLI 로 갈아타려면 FOUNDIN_RUNNER=claude-code 또는 codex.",
         );
       }

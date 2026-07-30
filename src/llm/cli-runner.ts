@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { CompleteRequest, LlmRunner } from "./runner.js";
 
-// 구독 CLI 러너 — Solar 베타 종료(2026-08-01) 후 폴백.
+// 구독 CLI 러너 — Solar 베타 종료 후 폴백 (solar-open2 는 2026-08-04 자정 alias 삭제).
 // claude -p / codex exec 를 서브프로세스로 호출한다 (OAuth 구독 인증, 직접 과금 API 없음).
 // 프롬프트는 argv 대신 stdin 으로 전달한다 (긴 한국어 프롬프트의 셸 이스케이프 문제 회피).
 

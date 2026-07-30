@@ -1,6 +1,6 @@
 // LLM 러너 추상화 — 오케스트레이션은 코드가 쥐고, 러너는 "프롬프트 → 텍스트" 만 담당한다.
-// solar: Upstage API (베타, ~2026-08-01)
-// claude-code / codex: 구독 CLI 서브프로세스 (무과금 원칙, 8/1 이후 폴백)
+// solar: Upstage API (solar-open2 ~2026-08-04 자정 · solar-pro4 2026-08-03 18:00~)
+// claude-code / codex: 구독 CLI 서브프로세스 (무과금 원칙 — 무료 체험 종료 후 폴백)
 
 export interface CompleteRequest {
   system?: string;
