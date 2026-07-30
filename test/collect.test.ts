@@ -3,7 +3,39 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { decodeEntities, extractTitle, findAttachmentLinks, htmlToText } from "../src/collect/html.js";
 import { collectDocuments, kstartupSiblingUrl, naverBlogMobileUrl } from "../src/collect/index.js";
-import { normalizeRawUrl } from "../src/collect/fetch.js";
+import { guardedFetch, normalizeRawUrl } from "../src/collect/fetch.js";
+
+describe("guardedFetch 보안 경계", () => {
+  it("Content-Length가 없어도 최대 크기를 넘는 즉시 스트림을 취소한다", async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 1_000) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new Uint8Array(1_024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const fetchImpl = (async () => new Response(body, { status: 200 })) as typeof fetch;
+
+    await expect(
+      guardedFetch("https://example.com/large", {
+        fetchImpl,
+        skipGuard: true,
+        maxBytes: 2_048,
+      }),
+    ).rejects.toThrow(/너무 큼/);
+
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(100);
+  });
+});
 
 const fixture = readFileSync(join(__dirname, "../fixtures/sample-notice.html"), "utf8");
 

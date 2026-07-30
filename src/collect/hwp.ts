@@ -14,6 +14,49 @@ import { decodeEntities } from "./html.js";
 const HWP_SIGNATURE = "HWP Document File";
 const HWPTAG_PARA_TEXT = 67; // HWPTAG_BEGIN(16) + 51
 
+export interface ArchiveLimits {
+  maxEntries: number;
+  maxEntryBytes: number;
+  maxTotalBytes: number;
+}
+
+const DEFAULT_ARCHIVE_LIMITS: ArchiveLimits = {
+  maxEntries: 512,
+  maxEntryBytes: 20 * 1024 * 1024,
+  maxTotalBytes: 40 * 1024 * 1024,
+};
+
+function archiveLimits(overrides?: Partial<ArchiveLimits>): ArchiveLimits {
+  return { ...DEFAULT_ARCHIVE_LIMITS, ...overrides };
+}
+
+function unzipSelected(
+  bytes: Buffer,
+  selected: (name: string) => boolean,
+  limits: ArchiveLimits,
+): Record<string, Uint8Array> {
+  let entries = 0;
+  let declaredTotal = 0;
+  const files = unzipSync(new Uint8Array(bytes), {
+    filter(file) {
+      entries += 1;
+      if (entries > limits.maxEntries) throw new Error(`압축 항목이 너무 많음: ${entries}개`);
+      if (!selected(file.name)) return false;
+      if (file.originalSize > limits.maxEntryBytes) {
+        throw new Error(`압축 해제 항목이 너무 큼: ${file.name} (${file.originalSize} bytes)`);
+      }
+      declaredTotal += file.originalSize;
+      if (declaredTotal > limits.maxTotalBytes) throw new Error(`압축 해제 전체 크기가 너무 큼: ${declaredTotal} bytes`);
+      return true;
+    },
+  });
+  const actualTotal = Object.values(files).reduce((sum, file) => sum + file.byteLength, 0);
+  if (Object.values(files).some((file) => file.byteLength > limits.maxEntryBytes) || actualTotal > limits.maxTotalBytes) {
+    throw new Error(`압축 해제 결과가 너무 큼: ${actualTotal} bytes`);
+  }
+  return files;
+}
+
 export function looksLikeCfb(bytes: Buffer): boolean {
   return bytes.length > 8 && bytes.readUInt32LE(0) === 0xe011cfd0 && bytes.readUInt32LE(4) === 0xe11ab1a1;
 }
@@ -67,7 +110,8 @@ function cleanText(text: string): string {
     .trim();
 }
 
-export function hwpToText(bytes: Buffer): string {
+export function hwpToText(bytes: Buffer, limitOverrides?: Partial<ArchiveLimits>): string {
+  const limits = archiveLimits(limitOverrides);
   const container = CFB.read(bytes, { type: "buffer" });
   const headerEntry = CFB.find(container, "/FileHeader");
   if (!headerEntry?.content) throw new Error("HWP FileHeader 없음");
@@ -89,19 +133,31 @@ export function hwpToText(bytes: Buffer): string {
     sections.push({ index: Number(match[1]), buf: Buffer.from(entry.content as Uint8Array) });
   });
   if (sections.length === 0) throw new Error("HWP BodyText 섹션 없음");
+  if (sections.length > limits.maxEntries) throw new Error(`HWP 섹션이 너무 많음: ${sections.length}개`);
   sections.sort((a, b) => a.index - b.index);
 
   let text = "";
+  let total = 0;
   for (const section of sections) {
-    const raw = compressed ? inflateRawSync(section.buf) : section.buf;
+    let raw: Buffer;
+    try {
+      raw = compressed
+        ? inflateRawSync(section.buf, { maxOutputLength: limits.maxEntryBytes })
+        : section.buf;
+    } catch (error) {
+      throw new Error(`HWP 압축 해제 크기 한도 초과: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (raw.length > limits.maxEntryBytes) throw new Error(`HWP 섹션이 너무 큼: ${raw.length} bytes`);
+    total += raw.length;
+    if (total > limits.maxTotalBytes) throw new Error(`HWP 압축 해제 전체 크기가 너무 큼: ${total} bytes`);
     text += `${extractSectionText(raw)}\n`;
   }
   return cleanText(text);
 }
 
 /** DOCX (OOXML) — word/document.xml 의 <w:t> 텍스트 노드 수집. HWPX 와 동일한 ZIP 패턴 */
-export function docxToText(bytes: Buffer): string {
-  const files = unzipSync(new Uint8Array(bytes));
+export function docxToText(bytes: Buffer, limitOverrides?: Partial<ArchiveLimits>): string {
+  const files = unzipSelected(bytes, (name) => name === "word/document.xml", archiveLimits(limitOverrides));
   const doc = files["word/document.xml"];
   if (!doc) throw new Error("DOCX 본문 없음 (다른 ZIP 포맷)");
   const xml = strFromU8(doc);
@@ -117,8 +173,12 @@ export function docxToText(bytes: Buffer): string {
   return cleanText(out);
 }
 
-export function hwpxToText(bytes: Buffer): string {
-  const files = unzipSync(new Uint8Array(bytes));
+export function hwpxToText(bytes: Buffer, limitOverrides?: Partial<ArchiveLimits>): string {
+  const files = unzipSelected(
+    bytes,
+    (name) => /^Contents\/section\d+\.xml$/i.test(name),
+    archiveLimits(limitOverrides),
+  );
   const sectionNames = Object.keys(files)
     .filter((name) => /^Contents\/section\d+\.xml$/i.test(name))
     .sort((a, b) => Number(a.match(/(\d+)/)?.[1] ?? 0) - Number(b.match(/(\d+)/)?.[1] ?? 0));

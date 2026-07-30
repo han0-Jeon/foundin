@@ -15,6 +15,7 @@ import {
   type SourceDocument,
 } from "../types.js";
 import { buildInquiryQuestions } from "../brief/inquiry.js";
+import { sanitizePublicationValue } from "../security/output.js";
 import { verifyExtraction } from "../verify/index.js";
 import { ADVISE_SYSTEM, CLASSIFY_SYSTEM, EXTRACT_SYSTEM, adviseUser, classifyUser, extractUser } from "./prompts.js";
 
@@ -266,7 +267,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     items.map((item, i) => ({ verified: outcome.verdicts.get(`${name}[${i}]`) ?? false, item }));
 
   const assembled: Omit<Brief, "inquiry_questions"> = {
-    source_url: url,
+    source_url: finalUrl,
     analyzed_at: new Date().toISOString(),
     model: deps.runner.name,
     tier,
@@ -288,6 +289,9 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     confidence: extraction.confidence,
   };
   // 문의 질문 — 보류·미검증·미확인 지점에서 결정적 생성 (Solar 미호출)
-  const brief: Brief = { ...assembled, inquiry_questions: buildInquiryQuestions(assembled) };
+  const brief = sanitizePublicationValue<Brief>({
+    ...assembled,
+    inquiry_questions: buildInquiryQuestions(assembled),
+  });
   return { ok: true, brief };
 }

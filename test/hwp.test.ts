@@ -63,6 +63,14 @@ describe("HWP v5 추출", () => {
     const hwp = buildHwp(paraTextRecord("비밀"), 0b10);
     expect(() => hwpToText(hwp)).toThrow(/암호화/);
   });
+
+  it("압축 해제된 섹션이 한도를 넘으면 즉시 거부한다", () => {
+    const section = deflateRawSync(paraTextRecord("가".repeat(200)));
+    const hwp = buildHwp(section, 0b1);
+    expect(() =>
+      hwpToText(hwp, { maxEntries: 10, maxEntryBytes: 64, maxTotalBytes: 64 }),
+    ).toThrow(/압축|너무 큼/);
+  });
 });
 
 describe("HWPX 추출", () => {
@@ -81,6 +89,14 @@ describe("HWPX 추출", () => {
     const zip = Buffer.from(zipSync({ "readme.txt": strToU8("hello") }));
     expect(() => hwpxToText(zip)).toThrow(/섹션 없음/);
   });
+
+  it("압축 해제 크기가 한도를 넘으면 거부한다", () => {
+    const xml = `<hs:sec xmlns:hp="x"><hp:p><hp:t>${"가".repeat(200)}</hp:t></hp:p></hs:sec>`;
+    const zip = Buffer.from(zipSync({ "Contents/section0.xml": strToU8(xml) }));
+    expect(() =>
+      hwpxToText(zip, { maxEntries: 10, maxEntryBytes: 64, maxTotalBytes: 64 }),
+    ).toThrow(/압축|너무 큼/);
+  });
 });
 
 describe("DOCX 텍스트 추출", () => {
@@ -98,5 +114,13 @@ describe("DOCX 텍스트 추출", () => {
   it("document.xml 없는 ZIP → 명시적 실패", () => {
     const zip = Buffer.from(zipSync({ "readme.txt": strToU8("hello") }));
     expect(() => docxToText(zip)).toThrow(/DOCX 본문 없음/);
+  });
+
+  it("압축 해제 크기가 한도를 넘으면 거부한다", () => {
+    const xml = `<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>${"가".repeat(200)}</w:t></w:r></w:p></w:body></w:document>`;
+    const zip = Buffer.from(zipSync({ "word/document.xml": strToU8(xml) }));
+    expect(() =>
+      docxToText(zip, { maxEntries: 10, maxEntryBytes: 64, maxTotalBytes: 64 }),
+    ).toThrow(/압축|너무 큼/);
   });
 });

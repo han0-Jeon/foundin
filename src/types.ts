@@ -7,9 +7,17 @@ export type DomainTier = "tier1" | "tier2" | "tier3";
 
 // ── 근거 인용 ────────────────────────────────────────────────
 // quote 는 원문에서 "그대로 복사"돼야 하며, 검증기가 원문 대조에 실패하면 해당 항목은 보류된다.
+export const httpUrlSchema = z.string().url().refine(
+  (value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  },
+  { message: "HTTP(S) URL만 허용됩니다" },
+);
+
 export const evidenceSchema = z.object({
   quote: z.string().min(4).max(400),
-  source_url: z.string().url(),
+  source_url: httpUrlSchema,
 });
 export type Evidence = z.infer<typeof evidenceSchema>;
 
@@ -77,7 +85,7 @@ const scheduleItemSchema = z.object({
 const overviewEvidenceSchema = z.object({
   field: z.string().min(1).max(60),
   quote: z.string().min(4).max(400),
-  source_url: z.string().url(),
+  source_url: httpUrlSchema,
 });
 
 // ── LLM 스텝 1: 공고 판정 ────────────────────────────────────

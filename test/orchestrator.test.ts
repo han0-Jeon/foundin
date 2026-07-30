@@ -162,6 +162,27 @@ describe("오케스트레이터 엔드투엔드 (mock)", () => {
     expect(markdown).toContain("지원 불가"); // 예비창업 + 사업자등록 필수
   });
 
+  it("LLM·문서 유래 HTML과 위험한 Markdown 링크를 게시 전에 무력화한다", async () => {
+    const malicious = JSON.parse(extractionJson(false));
+    malicious.overview.title = '<img src=x onerror=alert(1)> [click](javascript:alert(1))';
+    malicious.requirements[0].text = '<script>alert(1)</script> 신청 조건';
+    const advice = JSON.parse(adviceOk);
+    advice.why_look = '<svg onload=alert(1)> [보기](javascript:alert(1)) 안전성 확인이 필요한 공고입니다.';
+
+    const result = await analyzeUrl(NOTICE_URL, {
+      runner: mockRunner({ extract: () => JSON.stringify(malicious), advise: JSON.stringify(advice) }),
+      collectImpl: collectStub,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const rendered = JSON.stringify(result.brief);
+    expect(rendered).not.toContain("<script");
+    expect(rendered).not.toContain("<img");
+    expect(rendered).not.toContain("<svg");
+    expect(rendered.toLowerCase()).not.toContain("javascript:");
+  });
+
   it("환각 인용 지속 → 재추출 후에도 실패면 미발행 (fail-closed)", async () => {
     const runner = mockRunner({ extract: () => extractionJson(true) });
     const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub });
