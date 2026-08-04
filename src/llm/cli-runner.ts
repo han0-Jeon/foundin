@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CompleteRequest, LlmRunner } from "./runner.js";
 
-// 구독 CLI 러너 — Solar 베타 종료 시 대안 (solar-open2 는 2026-08-04 예정 alias 해제).
+// 구독 CLI 러너 — Solar 무료 기간 종료 시 대안 (solar-pro4 는 정식 출시와 함께 유료 전환 예정).
 // claude -p / codex exec 를 서브프로세스로 호출한다 (OAuth 구독 인증, 직접 과금 API 없음).
 // 프롬프트는 argv 대신 stdin 으로 전달한다 (긴 한국어 프롬프트의 셸 이스케이프 문제 회피).
 

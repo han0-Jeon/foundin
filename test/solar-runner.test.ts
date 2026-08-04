@@ -1,4 +1,4 @@
-// SolarRunner 의 오류 안내 — 베타 종료(2026-08-01) 후 클론해 돌리는 사람을 위한 것.
+// SolarRunner 의 오류 안내 — 무료 기간이 끝난 뒤 클론해 돌리는 사람을 위한 것.
 // 네트워크는 fetch 스텁으로 대체한다 (오프라인 테스트 원칙 유지).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SolarRunner } from "../src/llm/solar.js";
@@ -13,7 +13,7 @@ function stubFetch(status: number, body: string): void {
 
 beforeEach(() => {
   process.env.UPSTAGE_API_KEY = "test-key";
-  process.env.UPSTAGE_MODEL = "solar-open2";
+  process.env.UPSTAGE_MODEL = "solar-pro4";
 });
 
 afterEach(() => {
@@ -31,11 +31,20 @@ describe("키가 없으면 생성 시점에 막는다", () => {
   });
 });
 
-describe("모델을 쓸 수 없을 때의 안내 (베타 종료 대비)", () => {
+describe("모델을 쓸 수 없을 때의 안내 (무료 기간 종료 대비)", () => {
   it("404 면 모델명·콘솔·러너 교체를 함께 안내한다", async () => {
     stubFetch(404, JSON.stringify({ error: { message: "model not found" } }));
     const runner = new SolarRunner();
-    await expect(runner.complete({ user: "안녕" })).rejects.toThrow(/solar-open2/);
+    await expect(runner.complete({ user: "안녕" })).rejects.toThrow(/solar-pro4/);
+    await expect(runner.complete({ user: "안녕" })).rejects.toThrow(/console\.upstage\.ai/);
+  });
+
+  // 2026-08-04 전환: .env 를 안 고친 사람이 가장 흔한 실패 경로다.
+  it("구 모델명(solar-open2)이 남아 있으면 후속 모델과 고칠 위치를 짚어 준다", async () => {
+    process.env.UPSTAGE_MODEL = "solar-open2";
+    stubFetch(404, JSON.stringify({ error: { message: "model not found" } }));
+    const runner = new SolarRunner();
+    await expect(runner.complete({ user: "안녕" })).rejects.toThrow(/solar-pro4/);
     await expect(runner.complete({ user: "안녕" })).rejects.toThrow(/UPSTAGE_MODEL/);
   });
 

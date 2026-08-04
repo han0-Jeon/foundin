@@ -1,4 +1,4 @@
-// solar-open2 캘리브레이션 — 키 수령 직후 1회 실행해 오케스트레이션 파라미터를 확정한다.
+// Solar 캘리브레이션 — 키 수령 직후 / 모델 교체 직후 1회 실행해 오케스트레이션 파라미터를 확정한다.
 //   npm run calibrate
 // 측정: ① 한국어 기본 응답 ② JSON 스키마 준수율 ③ 장문 컨텍스트 ④ 지연시간 ⑤ tool calling 지원 여부
 
@@ -17,7 +17,12 @@ if (!process.env.UPSTAGE_API_KEY) {
 }
 
 const fixtureText = htmlToText(readFileSync(join(import.meta.dirname, "../fixtures/sample-notice.html"), "utf8"));
-const lines: string[] = [`# solar-open2 캘리브레이션 리포트`, ``, `실행: ${new Date().toISOString()}`, ``];
+const lines: string[] = [
+  `# ${process.env.UPSTAGE_MODEL ?? "solar-pro4"} 캘리브레이션 리포트`,
+  ``,
+  `실행: ${new Date().toISOString()}`,
+  ``,
+];
 const runner = new SolarRunner();
 
 function record(line: string): void {
@@ -91,7 +96,7 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ value: T; ms: number }>
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.UPSTAGE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: process.env.UPSTAGE_MODEL ?? "solar-open2",
+        model: process.env.UPSTAGE_MODEL ?? "solar-pro4",
         messages: [{ role: "user", content: "서울의 오늘 날씨를 조회하라" }],
         tools: [
           {

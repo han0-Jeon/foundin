@@ -3,9 +3,10 @@ import type { CompleteRequest, LlmRunner } from "./runner.js";
 // Upstage Solar API — OpenAI 호환 chat completions.
 // 베타 한도: 400 RPM / 150K TPM. 429·5xx 는 지수 백오프로 재시도.
 //
-// ⚠ solar-open2 는 추론(reasoning) 모델이다 (2026-07-19 실측): completion 토큰을 생각에 먼저
-// 소모한 뒤 content 를 쓴다. max_tokens 가 작으면 생각만 하다 content 가 빈 채로 끝나므로,
-// 호출자가 요청한 본문 예산에 추론 버퍼를 얹고, 비면 버퍼를 늘려 재시도한다.
+// ⚠ Solar 는 추론(reasoning) 모델이다 (solar-open2 2026-07-19 · solar-pro4 2026-08-04 실측):
+// completion 토큰을 생각에 먼저 소모한 뒤 content 를 쓴다. max_tokens 가 작으면 생각만 하다
+// content 가 빈 채로 끝나므로, 호출자가 요청한 본문 예산에 추론 버퍼를 얹고, 비면 늘려 재시도한다.
+// pro4 도 동일 — 짧은 질문 1건에 completion 134 토큰 중 130 이 reasoning 이었다.
 
 const MAX_ATTEMPTS = 3;
 const REASONING_BUFFER_BASE = 4096;
@@ -31,7 +32,7 @@ export class SolarRunner implements LlmRunner {
       throw new Error("UPSTAGE_API_KEY 가 없습니다. .env 를 확인하세요 (.env.example 참고).");
     }
     this.baseUrl = (process.env.UPSTAGE_BASE_URL ?? "https://api.upstage.ai/v1").replace(/\/$/, "");
-    this.name = process.env.UPSTAGE_MODEL ?? "solar-open2";
+    this.name = process.env.UPSTAGE_MODEL ?? "solar-pro4";
   }
 
   async complete(req: CompleteRequest): Promise<string> {
@@ -122,15 +123,18 @@ export class SolarRunner implements LlmRunner {
         await backoff(attempt);
         continue;
       }
-      // 모델 전환 일정 (Upstage 공지 2026-07-29): solar-open2 는 8/4 자정에 alias 삭제,
-      // solar-pro4 는 8/3 18:00 부터. 어느 쪽 창에 있는지에 따라 고칠 값이 달라서
-      // "모델 없음" 오류만 보여주면 무엇을 바꿔야 할지 알 수 없다.
+      // 모델 전환 완료 (Upstage 공지 2026-08-03): solar-open2 는 8/4 자정에 alias 삭제됐고
+      // 후속은 solar-pro4 다. 구 모델명을 그대로 둔 .env 로 돌리면 여기로 떨어지므로,
+      // "모델 없음" 오류에 무엇을 바꿔야 하는지를 함께 실어 보낸다.
       if (response.status === 404 || (response.status === 400 && /model/i.test(errorText))) {
-        const successor = this.name === "solar-open2" ? "solar-pro4" : "solar-open2";
+        const hint =
+          this.name === "solar-pro4"
+            ? "solar-pro4 는 정식 출시 전까지 무료 체험으로 열려 있습니다 — 체험이 끝났거나 키 권한이 없을 수 있습니다. "
+            : "후속 모델은 'solar-pro4' 입니다 (.env 의 UPSTAGE_MODEL 을 바꿔 주세요). " +
+              "solar-open2 는 2026-08-04 자정에 삭제됐습니다. ";
         throw new Error(
           `모델 '${this.name}' 을 쓸 수 없습니다 (HTTP ${response.status}). ` +
-            `.env 의 UPSTAGE_MODEL 을 '${successor}' 로 바꿔 보세요 — ` +
-            "solar-open2 는 2026-08-04 자정에 삭제됐고 solar-pro4 는 08-03 18:00 부터 호출됩니다. " +
+            hint +
             "쓸 수 있는 모델은 console.upstage.ai 에서 확인하실 수 있습니다. " +
             "구독 CLI 로 갈아타려면 FOUNDIN_RUNNER=claude-code 또는 codex.",
         );
