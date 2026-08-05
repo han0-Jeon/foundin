@@ -36,6 +36,7 @@ function brief(overrides: Partial<Brief> = {}): Brief {
       required_certifications: [],
       excluded_targets: [],
     },
+    eligibility_evidence: [],
     why_look: "예비창업자 대상 최대 5천만원.",
     requirements: [
       { verified: true, item: { text: "예비창업자", evidence, branch_advice: { pre_startup: "예비 트랙으로 지원하세요" } } },
@@ -51,6 +52,7 @@ function brief(overrides: Partial<Brief> = {}): Brief {
       held: ["requirements[1]"],
       value_issues: [],
       conflicts: [],
+      eligibility_verdicts: {},
       publishable: true,
       gate_reason: null,
     },

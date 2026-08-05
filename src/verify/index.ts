@@ -118,6 +118,25 @@ export function verifyExtraction(extraction: Extraction, documents: SourceDocume
     }
   }
 
+  // ── 자격 12필드 필드별 판정 (2026-08-05 facts-first 1단계 — 그림자) ──
+  // 게이트·quotes 카운터에 반영하지 않는다 (checkQuote 대신 quoteExists 직접 사용).
+  // 발행 거동은 그대로 두고 판정 데이터만 만든다 — 게이트 반영은 골든셋 검증 후 별도 단계.
+  const eligibilityEvidenceByField = new Map<string, string[]>();
+  for (const entry of extraction.eligibility_evidence) {
+    const list = eligibilityEvidenceByField.get(entry.field) ?? [];
+    list.push(entry.quote);
+    eligibilityEvidenceByField.set(entry.field, list);
+  }
+  const eligibilityVerdicts: Record<string, "verified" | "unknown"> = {};
+  for (const [field, value] of Object.entries(extraction.eligibility)) {
+    const hasValue = Array.isArray(value) ? value.length > 0 : value !== null;
+    if (!hasValue) continue; // 값 없음 = 판정 없음 (소비자는 "모름"으로 다룬다)
+    const quotes = eligibilityEvidenceByField.get(field) ?? [];
+    eligibilityVerdicts[field] = quotes.some((quote) => quoteExists(quote, index))
+      ? "verified"
+      : "unknown";
+  }
+
   // ── 발행 게이트 (fail-closed) ──
   let gateReason: string | null = null;
   const requirementTotal = extraction.requirements.length;
@@ -142,6 +161,7 @@ export function verifyExtraction(extraction: Extraction, documents: SourceDocume
       held,
       value_issues: valueIssues,
       conflicts,
+      eligibility_verdicts: eligibilityVerdicts,
       publishable: gateReason === null,
       gate_reason: gateReason,
     },

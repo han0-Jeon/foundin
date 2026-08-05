@@ -86,6 +86,7 @@ const baseExtraction = (overrides: Partial<Extraction>): Extraction => ({
     required_certifications: [],
     excluded_targets: [],
   },
+  eligibility_evidence: [],
   requirements: [],
   exclusions: [],
   documents: [],
@@ -228,5 +229,66 @@ describe("검증 게이트 (fail-closed)", () => {
     const { report } = verifyExtraction(extraction, [doc(noticeText)]);
     expect(report.publishable).toBe(false);
     expect(report.gate_reason).toContain("마감일");
+  });
+});
+
+describe("자격 필드 판정 (facts-first 1단계 — 그림자)", () => {
+  const seoulEvidence = {
+    field: "target_regions",
+    quote: "본점 또는 주사업장이 서울특별시에 소재한 기업",
+    source_url: "https://example.go.kr/notice",
+  };
+  const passingRequirements = [
+    {
+      text: "창업 7년 이내 기업",
+      evidence: { quote: "공고일 기준 사업자등록을 완료한 창업 7년 이내 기업", source_url: "https://example.go.kr/notice" },
+      branch_advice: null,
+    },
+    {
+      text: "서울 소재",
+      evidence: { quote: "본점 또는 주사업장이 서울특별시에 소재한 기업", source_url: "https://example.go.kr/notice" },
+      branch_advice: null,
+    },
+  ];
+
+  it("근거가 원문에 실존하면 verified", () => {
+    const extraction = baseExtraction({ eligibility_evidence: [seoulEvidence] });
+    const { report } = verifyExtraction(extraction, [doc(noticeText)]);
+    expect(report.eligibility_verdicts.target_regions).toBe("verified");
+  });
+
+  it("값은 있는데 근거가 없으면 unknown", () => {
+    const { report } = verifyExtraction(baseExtraction({}), [doc(noticeText)]);
+    expect(report.eligibility_verdicts.max_revenue_krw).toBe("unknown");
+    expect(report.eligibility_verdicts.requires_business_registration).toBe("unknown");
+  });
+
+  it("근거 인용이 원문에 없으면 unknown", () => {
+    const extraction = baseExtraction({
+      eligibility_evidence: [
+        { field: "max_revenue_krw", quote: "직전년도 매출액 10억원 미만 기업", source_url: "https://example.go.kr/notice" },
+      ],
+    });
+    const { report } = verifyExtraction(extraction, [doc(noticeText)]);
+    expect(report.eligibility_verdicts.max_revenue_krw).toBe("unknown");
+  });
+
+  it("null·빈 배열 필드는 판정 대상이 아니다", () => {
+    const { report } = verifyExtraction(baseExtraction({}), [doc(noticeText)]);
+    expect(report.eligibility_verdicts).not.toHaveProperty("min_age");
+    expect(report.eligibility_verdicts).not.toHaveProperty("required_certifications");
+  });
+
+  it("판정은 발행 게이트·인용 카운터에 영향을 주지 않는다", () => {
+    const withEvidence = baseExtraction({ requirements: passingRequirements, eligibility_evidence: [seoulEvidence] });
+    const withoutEvidence = baseExtraction({ requirements: passingRequirements });
+    const a = verifyExtraction(withEvidence, [doc(noticeText)]);
+    const b = verifyExtraction(withoutEvidence, [doc(noticeText)]);
+    // unknown 이 있어도(매출 10억 무근거) 발행 거동은 기존과 동일
+    expect(Object.values(b.report.eligibility_verdicts)).toContain("unknown");
+    expect(a.report.publishable).toBe(true);
+    expect(b.report.publishable).toBe(true);
+    // eligibility 인용은 quotes 카운터에 불산입 — 근거 유무와 무관하게 총량 동일
+    expect(a.report.quotes_total).toBe(b.report.quotes_total);
   });
 });

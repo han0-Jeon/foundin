@@ -102,6 +102,9 @@ export const extractionSchema = z.object({
   overview: overviewSchema,
   overview_evidence: z.array(overviewEvidenceSchema).max(20).default([]),
   eligibility: eligibilityFactsSchema,
+  // 자격 12필드의 근거 인용 (field 명 ↔ eligibility 키). 2026-08-05 facts-first 1단계 —
+  // 값마다 원문 근거를 요구하고 검증기가 필드별 판정(verified/unknown)을 만든다.
+  eligibility_evidence: z.array(overviewEvidenceSchema).max(24).default([]),
   requirements: z.array(requirementSchema).max(12),
   exclusions: z.array(itemSchema).max(12).default([]),
   documents: z.array(documentItemSchema).max(15).default([]),
@@ -158,6 +161,13 @@ export interface ContactInfo {
 }
 
 // ── 검증 리포트 (결정적 계산, LLM 산출물 아님) ────────────────
+/**
+ * 자격 필드 판정 — verified: 값에 원문 실존 인용이 붙어 있음 / unknown: 값은 있으나
+ * 근거가 없거나 원문 대조 실패. null(빈 배열) 필드는 판정 자체가 없다 — 소비자는
+ * "판정 없음 = 모름"으로 다뤄야 한다 ("조건 없음"으로 해석 금지).
+ */
+export type EligibilityVerdict = "verified" | "unknown";
+
 export interface VerificationReport {
   quotes_total: number;
   quotes_passed: number;
@@ -167,6 +177,11 @@ export interface VerificationReport {
   value_issues: string[];
   /** 문서 간 충돌 (예: 마감일 상이) */
   conflicts: string[];
+  /**
+   * 자격 12필드 필드별 판정 (2026-08-05 facts-first 1단계 — 그림자).
+   * 발행 게이트·quotes 카운터에는 반영하지 않는다: 발행 거동 불변, 판정 데이터만 추가.
+   */
+  eligibility_verdicts: Record<string, EligibilityVerdict>;
   publishable: boolean;
   gate_reason: string | null;
 }
@@ -190,6 +205,8 @@ export interface Brief {
   tier: DomainTier;
   overview: Overview;
   eligibility: EligibilityFacts;
+  /** 자격 필드별 근거 인용 — 판정(verification.eligibility_verdicts)과 함께 facts 통합의 원재료 */
+  eligibility_evidence: { field: string; quote: string; source_url: string }[];
   why_look: string | null;
   requirements: VerifiedItem<z.infer<typeof requirementSchema>>[];
   exclusions: VerifiedItem<z.infer<typeof itemSchema>>[];

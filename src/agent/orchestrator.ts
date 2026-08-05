@@ -273,6 +273,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     tier,
     overview: extraction.overview,
     eligibility: extraction.eligibility,
+    eligibility_evidence: extraction.eligibility_evidence,
     why_look: whyLook,
     requirements: extraction.requirements.map((item, i) => ({
       verified: outcome.verdicts.get(`requirements[${i}]`) ?? false,

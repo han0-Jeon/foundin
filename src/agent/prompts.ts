@@ -28,6 +28,9 @@ export const EXTRACT_SYSTEM = `너는 한국 정부지원사업 공고를 정독
 8. required_certifications 는 필수 요건일 때만. 우대 사항은 제외.
 9. overview_evidence 에는 apply_start, apply_end, amount_max_krw, support_scale 값 각각의 근거 인용을 넣는다 (field 명 일치).
 10. 날짜는 YYYY-MM-DD. 연도가 문서에 없으면 접수 맥락상 가장 타당한 연도를 쓰되 confidence 를 낮춘다.
+11. eligibility 에 null 이 아닌 값을 넣을 때마다 eligibility_evidence 에 그 값의 근거 인용을 넣는다
+    (field 명은 eligibility 키와 일치 — 예: "max_age", "target_regions"). 원문에서 근거 문장을
+    찾을 수 없는 값은 추측으로 채우지 말고 null 로 둔다.
 
 JSON 만 출력한다. 형식:
 {
@@ -37,6 +40,7 @@ JSON 만 출력한다. 형식:
   "eligibility": {"allows_pre_startup": bool|null, "excludes_pre_startup": bool|null, "requires_business_registration": bool|null,
     "min_startup_years": num|null, "max_startup_years": num|null, "min_age": int|null, "max_age": int|null,
     "max_revenue_krw": int|null, "max_employees": int|null, "target_regions": [str], "required_certifications": [str], "excluded_targets": [str]},
+  "eligibility_evidence": [{"field": str, "quote": str, "source_url": str}],
   "requirements": [{"text": str, "evidence": {"quote": str, "source_url": str}, "branch_advice": null}],
   "exclusions": [{"text": str, "evidence": {"quote": str, "source_url": str}|null}],
   "documents": [{"name": str, "note": str|null, "evidence": {"quote": str, "source_url": str}|null}],
