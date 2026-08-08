@@ -247,6 +247,21 @@ export async function collectDocuments(url: string, options: CollectOptions = {}
     }
   }
 
+  // 서버가 본문 URL 과 같은 주소로 프리셋을 보냈다면 그것을 본문으로 쓴다.
+  // 서버는 워커가 스스로 읽을 수 없는 사이트에만 source_page 를 동봉한다
+  // (foundin.kr lib/briefs/claim-documents.ts 의 JS_RENDER_HOSTS — 청년정책·sbiz24).
+  // 그 사이트들은 상세가 SPA 셸이라 페이지 fetch 로는 어느 공고든 같은 껍데기가 온다 —
+  // 2026-08-08 실측: 청년정책 공고 46건 중 15건이 "다른 공고 내용"으로 발행돼 있었다.
+  // ⚠ 이 폴백이 없으면 셸에서 뽑은 내용이 엉뚱한 공고에 붙는다. mergePresetDocuments 는
+  //   같은 URL 을 seen 으로 걸러 버리므로, 본문 선택은 여기서 먼저 끝내야 한다.
+  const bodyPreset = options.presetDocuments?.find(
+    (preset) => preset.url === main.finalUrl || preset.url === url,
+  );
+  const bodyPresetText = bodyPreset?.text?.trim() ?? "";
+  if (bodyPresetText.length >= MIN_PAGE_TEXT) {
+    pageText = bodyPresetText;
+  }
+
   if (pageText.length >= MIN_PAGE_TEXT) {
     documents.push({ url: main.finalUrl, kind: "html", title: extractTitle(html), text: pageText });
   } else if (!ocrOn && !options.presetDocuments?.length) {
