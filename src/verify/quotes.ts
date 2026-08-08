@@ -9,6 +9,10 @@ export function normalizeForMatch(text: string): string {
     .replace(/[​-‍﻿]/g, "")
     .replace(/[""''「」『』]/g, '"')
     .replace(/[·ㆍ•]/g, "·")
+    // 셀 구분자는 공백과 동치 — htmlToText 가 표·라벨쌍을 " | " 로 잇기 전(개행)과 후를
+    // 같은 문자열로 접어, 추출 개편 이전에 만들어진 인용도 계속 맞는다.
+    // ⚠ 웹 repo 의 lib/evidence/locate.ts buildLocatorIndex 와 동치여야 한다.
+    .replace(/\|/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
