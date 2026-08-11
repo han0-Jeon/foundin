@@ -10,6 +10,13 @@
 // 원칙은 기존과 같다 — 불일치는 "틀린 값"이 아니라 "모름"으로 내린다(fail-closed).
 // 값을 null 로 비우면 브리프는 그 자리를 "원문 확인 필요"로 렌더하고,
 // buildInquiryQuestions 가 기관에 물을 질문을 만든다.
+//
+// 적용 경계 (2026-08-11 실전 3건 측정으로 정함):
+//   **값(스칼라·배열)만 지운다. 항목 리스트는 재현 여부를 재기만 한다.**
+// 항목까지 같은 규칙으로 지웠더니 한 공고에서 요건 5개 중 4개가 사라졌다. 오답이라서가
+// 아니라 두 번째 실행이 같은 요건을 다른 문장으로 인용하거나 다르게 쪼갰기 때문이다.
+// 항목은 이미 "인용이 원문에 실존하는가" 게이트가 지키고 있고, 교차 검증이 맡아야 할
+// 실패 모드(실존 문장을 엉뚱한 필드·숫자에 붙이기)는 값 쪽에서 일어난다.
 
 import type { Evidence, Extraction } from "../types.js";
 import { normalizeForMatch } from "./quotes.js";
@@ -20,11 +27,23 @@ export interface CrossCheckReport {
   /** 값이 있어 대조 대상이 된 필드 수 / 그중 일치한 수 */
   fields_checked: number;
   fields_agreed: number;
-  /** 항목 리스트: 1차에 있던 개수 / 두 번 다 나온 개수 */
+  /** 항목 리스트: 1차에 있던 개수 / 두 번 다 나온 개수 (측정만 — 항목은 지우지 않는다) */
   items_checked: number;
   items_agreed: number;
-  /** 불일치로 내린 위치 ("overview.amount_max_krw", "eligibility.max_age", "requirements[2]") */
+  /** 불일치로 **내린** 값의 위치 ("overview.amount_max_krw", "eligibility.max_age") */
   dropped: string[];
+  /**
+   * 재현되지 않은 항목의 위치 ("requirements[2]"). **지우지 않고 알리기만 한다.**
+   *
+   * 2026-08-11 실전 3건 측정에서 정한 경계다. 값(스칼라)은 두 번 다 같아야 남기지만,
+   * 항목까지 같은 규칙으로 지우면 브리프가 텅 빈다 — 한 공고에서 요건 5개 중 4개가
+   * 사라졌다. 원인은 오답이 아니라 표현 차이다: 같은 요건을 두 번째 실행이 다른 문장으로
+   * 인용하거나 다르게 쪼개면 짝이 안 맞는다.
+   * 항목은 이미 "인용이 원문에 실존하는가" 게이트를 통과한 것들이라 방어선이 따로 있다.
+   * 교차 검증이 실제로 잡아야 하는 건 인용 대조가 못 잡는 쪽 — 실존 문장을 엉뚱한
+   * 필드·숫자에 붙이는 것 — 이고, 그건 스칼라 값에서 일어난다.
+   */
+  unstable_items: string[];
 }
 
 /** 인용 두 개가 "같은 문장을 가리키는가" — 모델마다 인용 범위가 조금씩 다르므로 포함 관계로 본다. */
@@ -146,22 +165,18 @@ export function crossCheckExtractions(primary: Extraction, second: Extraction): 
 
   const merged = { ...primary, overview, eligibility } as Extraction;
 
+  // 항목은 재현 여부를 재기만 하고 지우지 않는다 (위 unstable_items 주석의 근거).
   let itemsChecked = 0;
   let itemsAgreed = 0;
+  const unstableItems: string[] = [];
   for (const field of LIST_FIELDS) {
     const mine = (primary[field] ?? []) as ItemLike[];
     const theirs = (second[field] ?? []) as ItemLike[];
-    const kept: ItemLike[] = [];
     mine.forEach((item, index) => {
       itemsChecked += 1;
-      if (theirs.some((other) => sameItem(item, other))) {
-        itemsAgreed += 1;
-        kept.push(item);
-      } else {
-        dropped.push(`${field}[${index}]`);
-      }
+      if (theirs.some((other) => sameItem(item, other))) itemsAgreed += 1;
+      else unstableItems.push(`${field}[${index}]`);
     });
-    (merged[field] as unknown) = kept;
   }
 
   // 살아남은 필드의 근거만 남긴다 — 내려간 값의 인용이 브리프에 떠 있으면 안 된다.
@@ -191,6 +206,7 @@ export function crossCheckExtractions(primary: Extraction, second: Extraction): 
       items_checked: itemsChecked,
       items_agreed: itemsAgreed,
       dropped,
+      unstable_items: unstableItems,
     },
   };
 }

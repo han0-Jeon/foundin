@@ -60,6 +60,7 @@ describe("교차 검증 — 합의된 값만 남긴다", () => {
     expect(report.fields_agreed).toBe(report.fields_checked);
     expect(report.items_agreed).toBe(2);
     expect(report.dropped).toEqual([]);
+    expect(report.unstable_items).toEqual([]);
   });
 
   it("값이 갈리면 null 로 내리고 위치를 남긴다 — 둘 중 하나를 고르지 않는다", () => {
@@ -83,13 +84,17 @@ describe("교차 검증 — 합의된 값만 남긴다", () => {
     expect(merged.eligibility_evidence.map((e) => e.field)).toEqual(["max_startup_years"]);
   });
 
-  it("한쪽에만 나온 항목은 뺀다", () => {
+  // 2026-08-11 실전 3건에서 정한 경계 — 항목까지 지우면 한 공고의 요건 5개 중 4개가 사라졌다.
+  // 원인은 오답이 아니라 표현 차이(같은 요건을 다른 문장으로 인용·다르게 쪼갬)였다.
+  it("한쪽에만 나온 항목은 알리되 지우지 않는다 — 항목은 인용 대조가 이미 지키고 있다", () => {
     const second = extraction();
     second.requirements = [second.requirements[0]!];
     const { merged, report } = crossCheckExtractions(extraction(), second);
-    expect(merged.requirements).toHaveLength(1);
-    expect(merged.requirements[0]!.text).toBe("예비창업자");
-    expect(report.dropped).toContain("requirements[1]");
+    expect(merged.requirements).toHaveLength(2);
+    expect(report.unstable_items).toContain("requirements[1]");
+    expect(report.dropped).not.toContain("requirements[1]");
+    expect(report.items_agreed).toBe(1);
+    expect(report.items_checked).toBe(2);
   });
 
   it("인용 범위가 달라도 같은 문장이면 같은 항목이다 (표현 차이로 항목을 잃지 않는다)", () => {
@@ -99,6 +104,7 @@ describe("교차 검증 — 합의된 값만 남긴다", () => {
     const { merged, report } = crossCheckExtractions(extraction(), second);
     expect(merged.requirements).toHaveLength(2);
     expect(report.items_agreed).toBe(2);
+    expect(report.unstable_items).toEqual([]);
   });
 
   it("배열 필드는 교집합 — 한쪽에만 있는 지역은 뺀다", () => {

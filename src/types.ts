@@ -192,7 +192,10 @@ export interface VerificationReport {
     fields_agreed: number;
     items_checked: number;
     items_agreed: number;
+    /** 불일치로 내린 값의 위치 (스칼라·배열 필드만 — 항목은 지우지 않는다) */
     dropped: string[];
+    /** 재현되지 않은 항목의 위치. 알리기만 하고 지우지 않는다 */
+    unstable_items: string[];
   };
   publishable: boolean;
   gate_reason: string | null;
