@@ -169,8 +169,17 @@ async function lane(laneId: number): Promise<void> {
             duration_s: Number(seconds),
           };
       const submitted = await api("/api/worker/briefs/submit", payload);
-      if (!submitted.ok) throw new Error(`submit HTTP ${submitted.status}`);
-      log(laneId, `잡 완료 ${job.id} → ${"status" in payload ? payload.status : "?"} (${seconds}s)`);
+      // 409 = 서버가 이미 이 잡을 확정했다. 정상 경로다: STAGE A 에서 "공고 아님"을 보고하면
+      // /stage 가 그 자리에서 status=rejected 로 닫고, 뒤따르는 submit 은 claim 상태가 아니라
+      // 거부된다. 이걸 실패로 처리하면 (1) 로그가 거짓말을 하고 (2) 아래 catch 가 status=failed
+      // 를 덧씌워 올바른 반려 사유를 지울 뻔한다. 결과는 이미 기록됐으므로 그대로 넘어간다.
+      if (submitted.status === 409) {
+        log(laneId, `잡 종료 ${job.id} → 서버가 이미 확정함 (STAGE A 반려, ${seconds}s)`);
+      } else if (!submitted.ok) {
+        throw new Error(`submit HTTP ${submitted.status}`);
+      } else {
+        log(laneId, `잡 완료 ${job.id} → ${"status" in payload ? payload.status : "?"} (${seconds}s)`);
+      }
     } catch (error) {
       log(laneId, `잡 실패 ${job.id}: ${error instanceof Error ? error.message : error}`);
       await api("/api/worker/briefs/submit", {
