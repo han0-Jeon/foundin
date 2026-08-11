@@ -15,6 +15,7 @@
     "worker": "tsx src/worker.ts",
     "calibrate": "tsx eval/calibrate.ts",
     "eval": "tsx eval/batch.ts",
+    "eval:v3": "tsx eval/schema-v3.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "mcp": "tsx src/mcp.ts"
