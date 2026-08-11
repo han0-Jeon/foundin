@@ -17,6 +17,7 @@ import {
 import { buildInquiryQuestions } from "../brief/inquiry.js";
 import { sanitizePublicationValue } from "../security/output.js";
 import { verifyExtraction } from "../verify/index.js";
+import { crossCheckExtractions, resolveCrossCheckRuns, type CrossCheckReport } from "../verify/crosscheck.js";
 import { ADVISE_SYSTEM, CLASSIFY_SYSTEM, EXTRACT_SYSTEM, adviseUser, classifyUser, extractUser } from "./prompts.js";
 
 /** STAGE A(수집·연락처·프리체크·판정) 완료 시점의 중간 보고. 워커가 서버로 전달한다. */
@@ -42,6 +43,8 @@ export interface AnalyzeDeps {
   precheckDeps?: PrecheckDeps;
   /** 인용 검증 실패 시 재추출 횟수 (기본 1) */
   maxRepair?: number;
+  /** 교차 검증 추출 횟수 — 1(기본) 또는 2. 미지정 시 FOUNDIN_CROSS_CHECK 를 읽는다. */
+  crossCheckRuns?: number;
 }
 
 function stripToJson(raw: string): string {
@@ -166,8 +169,10 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
 
   // 3. 추출 → 4. 검증 (실패 인용은 피드백 삼아 1회 재추출)
   const maxRepair = deps.maxRepair ?? 1;
+  const crossCheckRuns = deps.crossCheckRuns ?? resolveCrossCheckRuns(process.env.FOUNDIN_CROSS_CHECK);
   let extraction: Extraction | null = null;
   let outcome: ReturnType<typeof verifyExtraction> | null = null;
+  let crossReport: CrossCheckReport | null = null;
 
   for (let round = 0; round <= maxRepair; round++) {
     step("extract", round === 0 ? "조건·날짜·서류 추출" : "검증 실패 항목 재추출");
@@ -211,6 +216,31 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
         return { ok: false, stage: "extract", reason: message, tier, source_url: url };
       }
     }
+    // 교차 검증 — 같은 원문을 한 번 더 독립 추출해, 두 번 다 나온 값만 남긴다.
+    // 2차가 실패하면 조용히 1회 결과로 진행한다: cross_check 를 안 붙이는 것이 곧 "안 했음"이고,
+    // 여기서 브리프를 통째로 버리면 1회 검증만도 못한 결과가 된다.
+    crossReport = null;
+    if (crossCheckRuns >= 2) {
+      step("extract", "교차 검증 — 같은 원문 2차 추출");
+      try {
+        const second = await completeJson(
+          deps.runner,
+          { system: EXTRACT_SYSTEM, user: extractUser(documents, feedback), maxTokens: 6000, onActivity: (m) => step("extract", m) },
+          extractionSchema,
+        );
+        const checked = crossCheckExtractions(latest, second);
+        latest = checked.merged;
+        crossReport = checked.report;
+        step(
+          "extract",
+          `교차 검증 — 값 ${checked.report.fields_agreed}/${checked.report.fields_checked} · ` +
+            `항목 ${checked.report.items_agreed}/${checked.report.items_checked} 일치`,
+        );
+      } catch (error) {
+        step("extract", `2차 추출 실패 — 1회 결과로 진행 (교차 검증 표기 없음): ${error instanceof Error ? error.message.slice(0, 80) : error}`);
+      }
+    }
+
     extraction = latest;
     step("verify", "인용·날짜·숫자 원문 대조");
     outcome = verifyExtraction(latest, documents);
@@ -283,7 +313,7 @@ export async function analyzeUrl(url: string, deps: AnalyzeDeps): Promise<Analys
     documents: stamp("documents", extraction.documents),
     schedule: stamp("schedule", extraction.schedule),
     risk_points: stamp("risk_points", extraction.risk_points),
-    verification: outcome.report,
+    verification: crossReport ? { ...outcome.report, cross_check: crossReport } : outcome.report,
     documents_meta: documents.map((document) => ({ url: document.url, kind: document.kind, chars: document.text.length })),
     skipped_attachments: skipped ?? [],
     contact, // Solar 미전송 — 우리 코드가 원문에서 직접 추출

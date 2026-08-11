@@ -317,3 +317,60 @@ describe("진행 보고 — 러너가 흘리는 실제 상태가 화면까지 �
     expect(result.ok).toBe(true);
   });
 });
+
+// 2회 교차 검증 (한영 결정 2026-08-11) — 크레딧을 품질로 바꾸는 경로.
+// 불일치는 "틀림"이 아니라 "모름"으로 내린다: 값을 비우고 브리프는 계속 발행한다.
+describe("교차 검증 통합 (오케스트레이터)", () => {
+  it("2회 일치하면 그대로 발행하고 cross_check 를 남긴다", async () => {
+    const runner = mockRunner();
+    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub, crossCheckRuns: 2 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(runner.calls.filter((call) => call.startsWith("extract"))).toHaveLength(2);
+    const cross = result.brief.verification.cross_check;
+    expect(cross?.runs).toBe(2);
+    expect(cross?.fields_agreed).toBe(cross?.fields_checked);
+    expect(cross?.dropped).toEqual([]);
+    expect(result.brief.overview.amount_max_krw).toBe(50_000_000);
+  });
+
+  it("2차가 다른 값을 내면 그 값만 비우고 나머지는 발행한다", async () => {
+    const disagreeing = JSON.parse(extractionJson(false));
+    disagreeing.overview.amount_max_krw = 30_000_000;
+    const runner = mockRunner({
+      extract: (round) => (round === 1 ? JSON.stringify(disagreeing) : extractionJson(false)),
+    });
+    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub, crossCheckRuns: 2 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.brief.overview.amount_max_krw).toBeNull();
+    expect(result.brief.verification.cross_check?.dropped).toContain("overview.amount_max_krw");
+    // 일치한 값·항목은 살아 있다
+    expect(result.brief.overview.apply_end).toBe("2026-08-14");
+    expect(result.brief.requirements).toHaveLength(2);
+  });
+
+  it("2차 추출이 실패하면 1회 결과로 발행하고 cross_check 를 붙이지 않는다", async () => {
+    const runner = mockRunner({
+      extract: (round) => {
+        if (round === 1) throw new Error("2차 호출 타임아웃");
+        return extractionJson(false);
+      },
+    });
+    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub, crossCheckRuns: 2 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // 없음 = "교차 검증 안 함". "일치했음"으로 읽히면 안 된다.
+    expect(result.brief.verification.cross_check).toBeUndefined();
+    expect(result.brief.overview.amount_max_krw).toBe(50_000_000);
+  });
+
+  it("기본값(미지정)은 1회 — 켠 적 없는 동작을 바꾸지 않는다", async () => {
+    const runner = mockRunner();
+    const result = await analyzeUrl(NOTICE_URL, { runner, collectImpl: collectStub });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(runner.calls.filter((call) => call.startsWith("extract"))).toHaveLength(1);
+    expect(result.brief.verification.cross_check).toBeUndefined();
+  });
+});

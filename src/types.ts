@@ -182,6 +182,18 @@ export interface VerificationReport {
    * 발행 게이트·quotes 카운터에는 반영하지 않는다: 발행 거동 불변, 판정 데이터만 추가.
    */
   eligibility_verdicts: Record<string, EligibilityVerdict>;
+  /**
+   * 2회 교차 검증 결과 (FOUNDIN_CROSS_CHECK=2 일 때만). 없으면 1회 추출이라는 뜻이다 —
+   * 소비자는 "없음 = 교차 검증 안 함"으로 다뤄야 한다 ("일치했음"으로 해석 금지).
+   */
+  cross_check?: {
+    runs: number;
+    fields_checked: number;
+    fields_agreed: number;
+    items_checked: number;
+    items_agreed: number;
+    dropped: string[];
+  };
   publishable: boolean;
   gate_reason: string | null;
 }
