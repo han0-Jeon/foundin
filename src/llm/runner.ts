@@ -10,6 +10,11 @@ export interface CompleteRequest {
   maxTokens?: number;
   temperature?: number;
   /**
+   * 추론 강도 (Solar 전용, 지원 모델만). 생략하면 러너 기본값(UPSTAGE_REASONING_EFFORT),
+   * null 이면 이 호출만 추론 없이. 다른 러너는 무시한다.
+   */
+  reasoningEffort?: "low" | "medium" | "high" | null;
+  /**
    * 호출 중 상태 보고 (선택). CLI 진행 표시가 이걸 받아 "지금 뭘 하는 중인지" 를 띄운다.
    *
    * 추출 한 번이 몇 분씩 걸리는데 그동안 화면에 아무 변화가 없으면 멈춘 걸로 보인다.

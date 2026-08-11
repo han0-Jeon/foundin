@@ -154,13 +154,18 @@ function secs(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-export function renderReport(report: BatchReport, meta: { runner: string; urlsFile: string } = { runner: "?", urlsFile: "?" }): string {
+export function renderReport(
+  report: BatchReport,
+  meta: { runner: string; urlsFile: string; variant?: string; usage?: string } = { runner: "?", urlsFile: "?" },
+): string {
   const r = report;
   const lines: string[] = [
     `# foundin 배치 평가 리포트`,
     ``,
-    `실행: ${new Date().toISOString()} · 러너: ${meta.runner} · 입력: ${meta.urlsFile}`,
+    `실행: ${new Date().toISOString()} · 러너: ${meta.runner} · 입력: ${meta.urlsFile}` +
+      (meta.variant ? ` · 추론 ${meta.variant}` : ``),
     ``,
+    ...(meta.usage ? [`토큰: ${meta.usage}`, ``] : []),
     `## 결과 분포 (총 ${r.total}건)`,
     ``,
     `| 결과 | 건수 |`,
@@ -285,10 +290,23 @@ async function main(): Promise<number> {
     },
   });
 
-  const markdown = renderReport(report, { runner: runner.name, urlsFile: flags.urls });
+  // Solar 로 돌렸을 때만 토큰이 집계된다 (구독 CLI 러너는 사용량을 돌려주지 않는다).
+  let usageLine: string | undefined;
+  if (runner.name.startsWith("solar")) {
+    const { formatSolarUsage, getSolarUsage } = await import("../src/llm/solar.js");
+    if (getSolarUsage().calls > 0) usageLine = formatSolarUsage();
+  }
+
+  const markdown = renderReport(report, {
+    runner: runner.name,
+    urlsFile: flags.urls,
+    variant: process.env.UPSTAGE_REASONING_EFFORT || "off",
+    usage: usageLine,
+  });
   await writeFile(join(process.cwd(), flags.out), markdown, "utf8");
 
   console.log("");
+  if (usageLine) console.log(`토큰 ${usageLine}`);
   console.log(`발행 ${report.published} · 반려 ${report.rejected} · 보류 ${report.held} · 수집실패 ${report.collectFailed} · 기타실패 ${report.otherFailed} (총 ${report.total})`);
   console.log(`인용 통과율 평균 ${pct(report.citation.avgPassRate)} · Tier1/2/3 ${report.tier.tier1}/${report.tier.tier2}/${report.tier.tier3}`);
   console.log(`소요 평균 ${secs(report.durationMs.avg)} · p90 ${secs(report.durationMs.p90)} · HWP 스킵 ${report.hwp.hwpSkipped}/${report.hwp.skippedTotal}`);
