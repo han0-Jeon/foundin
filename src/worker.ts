@@ -20,7 +20,18 @@ loadDotEnv();
 const BASE_URL = (process.env.FOUNDIN_BASE_URL ?? "").replace(/\/$/, "");
 const SECRET = process.env.BRIEF_WORKER_SECRET ?? "";
 const CONCURRENCY = Math.max(1, Number(process.env.WORKER_CONCURRENCY ?? 3));
-const IDLE_POLL_MS = 20_000;
+// 놀고 있을 때 다시 물어보는 간격 (2026-08-21: 20초 → 5분).
+//
+// 왜 늘렸나: 이 폴링은 **폴백**이다. 새 잡이 생기면 Realtime 이 즉시 깨우고(setupRealtime),
+// 폴링은 Realtime 이 조용히 죽었을 때(노트북 절전·와이파이 끊김) 잡이 방치되는 걸 막는 보험이다.
+// 그런데 값이 Realtime 도입 전 그대로라 보험이 주전처럼 뛰었다 — 실측(2026-08-21, Vercel
+// Observability): /api/worker/briefs/claim 이 12시간에 14,000회로 그 프로젝트 전체 요청의
+// 99% 였고, 환산하면 월 84만 회다(Hobby 무료 한도 100만의 84%). 사람 트래픽은 사실상 0인데
+// 폴링 하나가 한도를 먹고 있었다.
+//
+// 5분으로 늘려도 체감은 그대로다: 정상 경로는 Realtime 이 즉시 깨우므로 폴링을 기다릴 일이 없고,
+// Realtime 이 죽은 예외 상황에서만 최대 5분 늦는다. 브리프 생성 자체가 분 단위라 무시할 만하다.
+const IDLE_POLL_MS = Math.max(10_000, Number(process.env.WORKER_IDLE_POLL_MS ?? 300_000));
 
 if (!BASE_URL || !SECRET) {
   console.error("FOUNDIN_BASE_URL / BRIEF_WORKER_SECRET 이 필요합니다 (.env).");
@@ -41,6 +52,17 @@ class Waker {
       this.waiters.add(done);
     });
   }
+  /**
+   * 대기 중인 레인 **하나만** 깨운다 (2026-08-21). Realtime 이벤트 한 건 = 잡 한 건이므로
+   * 레인 3개를 다 깨우면 2개는 빈손으로 claim 을 때리고 다시 잠든다 — 그 헛걸음이 위 실측
+   * 14,000회에서 평균 간격을 20초 → 9초로 끌어내린 원인이다. 잡이 여러 건이면 이벤트도 여러 건
+   * 오므로 레인은 자연히 그만큼 깨어난다.
+   */
+  wakeOne(): void {
+    const [first] = this.waiters;
+    if (first) first();
+  }
+  /** 전원 깨우기 — 종료 신호처럼 "모두가 지금 확인해야 하는" 경우에만 쓴다 */
   wakeAll(): void {
     for (const done of [...this.waiters]) done();
   }
@@ -119,11 +141,11 @@ async function setupRealtime(): Promise<void> {
     const client = createClient(url, key, { auth: { persistSession: false } });
     client
       .channel("brief-queue")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "solar_briefs" }, () => waker.wakeAll())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "solar_briefs" }, () => waker.wakeOne())
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "solar_briefs", filter: "needs_refresh=eq.true" },
-        () => waker.wakeAll(),
+        () => waker.wakeOne(),
       )
       .subscribe((status: string) => {
         if (status === "SUBSCRIBED") log("rt", "Realtime 구독 활성 — 픽업 즉시화 (폴링은 폴백 유지)");
